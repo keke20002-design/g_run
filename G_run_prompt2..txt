@@ -1,0 +1,225 @@
+[장애물생성 수정]
+1️⃣ 기본 개념 (Safe Lane Algorithm)
+
+화면을 3~5개의 lane으로 나눈다.
+
+lane 0
+lane 1
+lane 2
+lane 3
+
+장애물 생성할 때 규칙 하나:
+
+한 lane은 항상 비워둔다
+
+예시
+
+spawn
+
+lane0 = obstacle
+lane1 = obstacle
+lane2 = EMPTY  ← safe
+lane3 = obstacle
+
+그러면 플레이어는 반드시 피할 수 있다.
+
+2️⃣ Flutter 로직 예시
+int laneCount = 4;
+int safeLane = Random().nextInt(laneCount);
+
+for (int i = 0; i < laneCount; i++) {
+  if (i == safeLane) continue;
+
+  spawnObstacle(lane: i);
+}
+
+간단하지만 효과는 크다.
+
+3️⃣ 반복 패턴 방지
+
+같은 safe lane 계속 나오면 게임이 너무 쉽다.
+
+그래서 이렇게 한다.
+
+int safeLane;
+
+do {
+  safeLane = Random().nextInt(laneCount);
+} while (safeLane == previousSafeLane);
+
+previousSafeLane = safeLane;
+
+플레이어는 계속 움직여야 한다.
+
+4️⃣ 인간이 좋아하는 패턴 (중요)
+
+완전 랜덤보다 패턴이 살짝 있는 난이도가 더 재미있다.
+
+예시 패턴
+
+1
+2
+1
+3
+2
+0
+
+플레이어 뇌는 이런 생각을 한다.
+
+내가 점점 잘해지고 있다
+
+사실 게임이 적당히 유도하는 중이다.
+
+5️⃣ 절대 금지 패턴
+
+이건 플레이어를 화나게 한다.
+
+   ■
+■     ■
+   ■
+
+위아래 동시에 막힘
+
+물리적으로 피할 수 없다.
+
+랜덤 생성이면 이런 게 반드시 나온다.
+
+6️⃣ 간격 보장 알고리즘
+
+장애물 사이 최소 거리 보장.
+
+double minGap = 120;
+
+if (lastObstacleX - newObstacleX < minGap) {
+  return; // spawn skip
+}
+
+이거 안 하면 벽처럼 막힌다.
+
+7️⃣ 최고로 좋은 방식 (실제 상업 게임)
+
+패턴 테이블
+
+랜덤이 아니라 미리 만든 패턴을 뿌린다.
+
+예
+
+pattern A
+■   ■
+  ■
+
+pattern B
+■ ■
+   ■
+
+pattern C
+  ■
+■   ■
+
+코드
+
+List patterns = [patternA, patternB, patternC];
+var p = patterns[random.nextInt(patterns.length)];
+spawnPattern(p);
+
+장점
+
+항상 피할 수 있음
+
+난이도 조절 쉬움
+
+플레이가 리듬감 생김
+
+[난이도조절]
+️⃣ 기본 구조 (3단계 루프)
+
+좋은 회피게임은 보통 이렇게 흐른다.
+
+1단계 : 적응 (Easy)
+2단계 : 긴장 (Medium)
+3단계 : 보상 (Relief)
+
+그리고 다시 반복.
+
+Easy → Medium → Hard → Relief → Medium → Hard → Relief
+
+이게 도파민 루프다.
+
+2️⃣ 시간 기준 설계 (실전용)
+
+캐주얼 모바일 기준.
+
+0~20초   : Easy
+20~45초  : Medium
+45~70초  : Hard
+70~80초  : Relief (쉬어가는 구간)
+
+80~120초 : Medium+
+120초 이후 : Hard+
+
+Relief 구간이 중요한데, 여기서 플레이어는
+
+“나 잘하는데?”
+
+라고 착각한다.
+
+3️⃣ 실제 코드 구조
+
+시간 기반 난이도.
+
+double difficulty;
+
+if (time < 20) {
+  difficulty = 0.3;
+} else if (time < 45) {
+  difficulty = 0.6;
+} else if (time < 70) {
+  difficulty = 0.9;
+} else if (time < 80) {
+  difficulty = 0.4; // relief
+}
+
+Relief 구간에서
+
+장애물 간격 증가
+
+속도 약간 감소
+
+4️⃣ 장애물 생성 확률
+
+난이도를 확률로 제어.
+
+Easy
+장애물 40%
+
+Medium
+장애물 60%
+
+Hard
+장애물 80%
+
+Flutter 느낌 코드
+
+if (Random().nextDouble() < spawnChance) {
+  spawnObstacle();
+}
+5️⃣ 플레이타임 늘리는 치트기
+
+Near Miss → 게임을 쉽게 만든다
+
+예
+
+Near Miss 성공
+→ 다음 장애물 간격 +20px
+
+코드 느낌
+
+if (nearMiss) {
+  nextGap += 20;
+}
+
+플레이어는
+
+내가 잘해서 살았다
+
+라고 생각한다. 사실 게임이 도와준 거다. 인간 뇌는 이런 착각을 좋아한다.
