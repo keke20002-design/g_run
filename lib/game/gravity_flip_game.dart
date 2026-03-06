@@ -11,6 +11,10 @@ import 'obstacle.dart';
 import 'obstacle_spawner.dart';
 import 'rotating_obstacle.dart';
 import 'grav_zone.dart';
+import 'energy_barrier.dart';
+import 'breakable_block.dart';
+import 'electric_sphere.dart';
+import 'laser_cannon.dart';
 import 'player.dart';
 
 export 'gravity_flip_game.dart';
@@ -88,6 +92,10 @@ class GravityFlipGame extends FlameGame
     children.whereType<Obstacle>().toList().forEach((o) => o.removeFromParent());
     children.whereType<RotatingObstacle>().toList().forEach((o) => o.removeFromParent());
     children.whereType<GravZone>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<EnergyBarrier>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakableBlock>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<ElectricSphere>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());
     children.whereType<ObstacleSpawner>().toList().forEach((s) => s.removeFromParent());
 
@@ -412,10 +420,18 @@ class GravityFlipGame extends FlameGame
     }
   }
 
+  void triggerLaserFlash() {
+    _caTime = _caDuration;
+  }
+
   void returnToMenu() {
     children.whereType<Obstacle>().toList().forEach((o) => o.removeFromParent());
     children.whereType<RotatingObstacle>().toList().forEach((o) => o.removeFromParent());
     children.whereType<GravZone>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<EnergyBarrier>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakableBlock>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<ElectricSphere>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());
     children.whereType<ObstacleSpawner>().toList().forEach((s) => s.removeFromParent());
     _highEnergyTimer = 0;

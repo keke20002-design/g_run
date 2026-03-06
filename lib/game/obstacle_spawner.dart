@@ -6,6 +6,10 @@ import 'difficulty_manager.dart';
 import 'obstacle.dart';
 import 'rotating_obstacle.dart';
 import 'grav_zone.dart';
+import 'energy_barrier.dart';
+import 'breakable_block.dart';
+import 'electric_sphere.dart';
+import 'laser_cannon.dart';
 
 // ── Queued delayed spawn ───────────────────────────────────────────────────────
 
@@ -126,9 +130,11 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     }
 
     // ── Rare specials: independent probability per type ───────────────────────
-    if (score >= 10000 && _rng.nextDouble() < 0.05) { _spawnGravZone(); return; }
-    if (score >= 7000  && _rng.nextDouble() < 0.08) { _spawnPopWall();  return; }
-    if (score >= 4000  && _rng.nextDouble() < 0.10) { _spawnRotating(); return; }
+    if (score >= 10000 && _rng.nextDouble() < 0.05) { _spawnGravZone();       return; }
+    if (score >= 9000  && _rng.nextDouble() < 0.08) { _spawnElectricSphere(); return; }
+    if (score >= 8000  && _rng.nextDouble() < 0.07) { _spawnLaserCannon();    return; }
+    if (score >= 7000  && _rng.nextDouble() < 0.08) { _spawnPopWall();        return; }
+    if (score >= 4000  && _rng.nextDouble() < 0.10) { _spawnRotating();       return; }
 
     // ── Determine if we spawn a pattern or a single ──────────────────────────
     final patternChance = (phase == DifficultyPhase.hard) ? 0.6 : 0.3;
@@ -141,17 +147,24 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     final r = _rng.nextDouble();
     if (score < 1500) {
       _spawnPillar();
-    } else if (score < 3000) {
+    } else if (score < 2000) {
       if (r < 0.65) { _spawnPillar(); } else { _spawnMoving(); }
-    } else if (score < 5000) {
+    } else if (score < 3000) {
       if (r < 0.45)      { _spawnPillar(); }
       else if (r < 0.70) { _spawnMoving(); }
-      else               { _spawnSpikeBurst(); }
-    } else {
+      else               { _spawnEnergyBarrier(); }
+    } else if (score < 5000) {
       if (r < 0.35)      { _spawnPillar(); }
-      else if (r < 0.55) { _spawnSpikeBurst(); }
-      else if (r < 0.78) { _spawnGate(); }
-      else               { _spawnMoving(); }
+      else if (r < 0.55) { _spawnMoving(); }
+      else if (r < 0.72) { _spawnSpikeBurst(); }
+      else               { _spawnBreakableBlock(); }
+    } else {
+      if (r < 0.28)      { _spawnPillar(); }
+      else if (r < 0.46) { _spawnSpikeBurst(); }
+      else if (r < 0.64) { _spawnGate(); }
+      else if (r < 0.78) { _spawnMoving(); }
+      else if (r < 0.90) { _spawnEnergyBarrier(); }
+      else               { _spawnBreakableBlock(); }
     }
   }
 
@@ -299,6 +312,41 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
       pos:    Vector2(game.size.x, 0),
       height: game.size.y,
     ));
+  }
+
+  void _spawnEnergyBarrier() {
+    final screenH = game.size.y;
+    final screenW = game.size.x;
+    final side    = _rng.nextBool() ? ObstacleSide.top : ObstacleSide.bottom;
+    final h       = 60.0 + _rng.nextDouble() * (screenH * 0.35);
+    final y       = side == ObstacleSide.top ? 0.0 : screenH - h;
+    game.add(EnergyBarrier(
+      pos:           Vector2(screenW, y),
+      side:          side,
+      barrierHeight: h,
+    ));
+  }
+
+  void _spawnBreakableBlock() {
+    final screenH = game.size.y;
+    final screenW = game.size.x;
+    final y       = screenH * (0.25 + _rng.nextDouble() * 0.50);
+    game.add(BreakableBlock(pos: Vector2(screenW, y)));
+  }
+
+  void _spawnElectricSphere() {
+    final screenH = game.size.y;
+    final screenW = game.size.x;
+    final y       = screenH * (0.25 + _rng.nextDouble() * 0.50);
+    game.add(ElectricSphere(pos: Vector2(screenW, y)));
+  }
+
+  void _spawnLaserCannon() {
+    final screenH = game.size.y;
+    final screenW = game.size.x;
+    final isTop   = _rng.nextBool();
+    final y       = isTop ? 0.0 : screenH - 20.0; // 20 = cannon height
+    game.add(LaserCannon(pos: Vector2(screenW, y), isTop: isTop));
   }
 
   // ── Core spawn helper ─────────────────────────────────────────────────────
