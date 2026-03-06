@@ -62,6 +62,11 @@ class GravityFlipGame extends FlameGame
   // Slow motion on death
   double _timescale = 1.0;
 
+  // Shield
+  bool   shieldActive   = false;
+  double _shieldHitTime = 0.0;
+  static const double _shieldHitDuration = 0.45;
+
   /// 0.0~1.0 — read by BackgroundComponent and Player
   double get milestoneBoostIntensity =>
       (_milestoneBoostTime / _milestoneBoostDuration).clamp(0.0, 1.0);
@@ -92,6 +97,8 @@ class GravityFlipGame extends FlameGame
     add(player);
     add(spawner);
     _timescale           = 1.0;
+    shieldActive         = false;
+    _shieldHitTime       = 0.0;
     difficultyManager.reset();
     scoreSystem.reset();
     _totalTime           = 0;
@@ -126,6 +133,7 @@ class GravityFlipGame extends FlameGame
     if (_caTime             > 0) _caTime             -= sdt;
     if (_milestoneBoostTime > 0) _milestoneBoostTime -= sdt;
     if (_highEnergyTimer    > 0) _highEnergyTimer    -= sdt;
+    if (_shieldHitTime      > 0) _shieldHitTime      -= dt; // wall-clock
     _totalTime += sdt;
 
     // Detect 1000-point milestones → CA flash + star boost + character rush
@@ -194,9 +202,11 @@ class GravityFlipGame extends FlameGame
         canvas.translate(dx, dy);
       }
       super.render(canvas);
+      _drawComboRing(canvas);
       canvas.restore();
     } else {
       super.render(canvas);
+      _drawComboRing(canvas);
     }
 
     // Cyan flash overlay at screen space (no transform applied)
@@ -248,9 +258,17 @@ class GravityFlipGame extends FlameGame
   /// Called by rotating obstacle / other non-Obstacle components.
   void killPlayer() {
     if (state != GameState.playing || player.isDead) return;
+    if (shieldActive) { absorbShieldHit(); return; }
     player.isDead = true;
     player.triggerDeathEffects();
     onPlayerDeath();
+  }
+
+  void absorbShieldHit() {
+    shieldActive   = false;
+    _shieldHitTime = _shieldHitDuration;
+    difficultyManager.nearMissGaugeCount = 0;
+    _shakeTime = _shakeDuration * 0.5; // 약한 진동 피드백
   }
 
   /// Called by GravZone — flip without killing.
@@ -278,7 +296,121 @@ class GravityFlipGame extends FlameGame
     onFlip?.call();
   }
 
-  void onNearMiss(NearMissGrade grade) => onNearMissCallback?.call(grade);
+  void onNearMiss(NearMissGrade grade) {
+    difficultyManager.addNearMissGauge();
+    if (difficultyManager.gaugeReady && !shieldActive) {
+      difficultyManager.consumeGauge();
+      shieldActive = true;
+    }
+    onNearMissCallback?.call(grade);
+  }
+
+  void _drawComboRing(Canvas canvas) {
+    if (state != GameState.playing) return;
+    final gauge = difficultyManager.nearMissGaugeCount;
+    if (gauge == 0 && !shieldActive && _shieldHitTime <= 0) return;
+
+    final cx = player.position.x + Player.playerSize / 2;
+    final cy = player.position.y + Player.playerSize / 2;
+    const ringR    = 27.0;
+    const sw       = 3.0;
+    const segments = 5;
+    const gap      = 0.14; // 세그먼트 사이 간격 (radian)
+    const segSweep = (2 * pi / segments) - gap;
+    const startA   = -pi / 2; // 12시 방향
+
+    // 쉴드 색상 팔레트
+    const colorBase  = Color(0xFF00CFFF); // 밝은 사이언
+    const colorCore  = Color(0xFFADE8FF); // 코어 하이라이트
+    const colorDim   = Color(0xFF0A1A28); // 빈 칸
+
+    final pulse = 0.60 + 0.40 * sin(_totalTime * 3.8);
+    // 쉴드 활성 시 느린 회전
+    final rot   = shieldActive ? _totalTime * 0.6 : 0.0;
+
+    for (int i = 0; i < segments; i++) {
+      final filled   = shieldActive || i < gauge;
+      final segStart = startA + i * (2 * pi / segments) + gap / 2 + rot;
+      final center   = Offset(cx, cy);
+      final rect     = Rect.fromCircle(center: center, radius: ringR);
+
+      if (!filled) {
+        // 빈 칸 — 어두운 아웃라인
+        canvas.drawArc(rect, segStart, segSweep, false,
+          Paint()
+            ..style       = PaintingStyle.stroke
+            ..strokeWidth = sw * 0.7
+            ..strokeCap   = StrokeCap.round
+            ..color       = colorDim,
+        );
+        continue;
+      }
+
+      // 채워진 / 쉴드 활성 칸
+      final glowAlpha  = shieldActive ? pulse * 0.85 : 0.50;
+      final glowBlur   = shieldActive ? 6.0 + pulse * 7 : 4.0;
+      final glowStroke = shieldActive ? sw + pulse * 9  : sw + 4;
+
+      // 외부 글로우
+      canvas.drawArc(rect, segStart, segSweep, false,
+        Paint()
+          ..style       = PaintingStyle.stroke
+          ..strokeWidth = glowStroke
+          ..strokeCap   = StrokeCap.round
+          ..color       = colorBase.withValues(alpha: glowAlpha)
+          ..maskFilter  = MaskFilter.blur(BlurStyle.normal, glowBlur),
+      );
+      // 메인 선
+      canvas.drawArc(rect, segStart, segSweep, false,
+        Paint()
+          ..style       = PaintingStyle.stroke
+          ..strokeWidth = sw
+          ..strokeCap   = StrokeCap.round
+          ..color       = shieldActive
+              ? Color.lerp(colorBase, colorCore, pulse * 0.6)!
+              : colorBase.withValues(alpha: 0.90),
+      );
+    }
+
+    // 쉴드 활성 시 내부 반투명 원판 (force field 느낌)
+    if (shieldActive) {
+      canvas.drawCircle(Offset(cx, cy), ringR - sw,
+        Paint()..color = colorBase.withValues(alpha: pulse * 0.08),
+      );
+      // 회전 스캔라인 (2개)
+      for (int s = 0; s < 2; s++) {
+        final scanAngle = rot * 2.5 + s * pi;
+        final ex = cx + cos(scanAngle) * (ringR - sw);
+        final ey = cy + sin(scanAngle) * (ringR - sw);
+        canvas.drawLine(Offset(cx, cy), Offset(ex, ey),
+          Paint()
+            ..color       = colorCore.withValues(alpha: pulse * 0.22)
+            ..strokeWidth = 1.0
+            ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 2),
+        );
+      }
+    }
+
+    // 쉴드 흡수 충격파
+    if (_shieldHitTime > 0) {
+      final t = 1.0 - (_shieldHitTime / _shieldHitDuration);
+      for (int r = 0; r < 3; r++) {
+        final delay = r * 0.10;
+        final lt    = ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0);
+        if (lt <= 0) continue;
+        final burstR = ringR + lt * (40.0 + r * 12);
+        final alpha  = ((1.0 - lt) * (1.0 - delay)).clamp(0.0, 1.0);
+        canvas.drawCircle(Offset(cx, cy), burstR,
+          Paint()
+            ..style       = PaintingStyle.stroke
+            ..strokeWidth = max(0.5, sw * (1.0 - lt * 0.9))
+            ..color       = (r == 0 ? Colors.white : colorBase)
+                .withValues(alpha: alpha * 0.85)
+            ..maskFilter  = MaskFilter.blur(BlurStyle.normal, 8 - lt * 5),
+        );
+      }
+    }
+  }
 
   void returnToMenu() {
     children.whereType<Obstacle>().toList().forEach((o) => o.removeFromParent());

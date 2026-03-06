@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'gravity_flip_game.dart';
+import 'difficulty_manager.dart';
 import 'obstacle.dart';
 import 'rotating_obstacle.dart';
 import 'grav_zone.dart';
@@ -75,12 +76,13 @@ class PopWarning extends PositionComponent
 
 class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
   double _timeSinceLastSpawn = 0;
+  double _nearMissBonus      = 0;
   final List<_Queued> _queue = [];
   final Random _rng = Random();
 
   double get _spawnInterval {
     final dm = game.difficultyManager;
-    return dm.minGap / dm.speed;
+    return (dm.minGap / dm.speed);
   }
 
   @override
@@ -93,19 +95,47 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     _queue.removeWhere((q) => q.delay <= 0);
 
     _timeSinceLastSpawn += dt;
-    if (_timeSinceLastSpawn >= _spawnInterval) {
+    
+    // Near miss bonus: if active, it delays the NEXT spawn
+    double effectiveInterval = _spawnInterval;
+    if (_nearMissBonus > 0) {
+      effectiveInterval += _nearMissBonus;
+      _nearMissBonus = 0; // consumed
+    }
+
+    if (_timeSinceLastSpawn >= effectiveInterval) {
       _timeSinceLastSpawn = 0;
       _pickAndSpawn();
     }
   }
 
+  void addNearMissBonus(double extraGap) {
+    // Convert 20px gap to seconds based on current speed
+    final dtBonus = extraGap / game.difficultyManager.speed;
+    _nearMissBonus += dtBonus;
+  }
+
   void _pickAndSpawn() {
     final score = game.scoreSystem.score;
+    final phase = game.difficultyManager.currentPhase;
+
+    // Relief phase: much simpler spawning
+    if (phase == DifficultyPhase.relief) {
+      if (_rng.nextDouble() < 0.3) _spawnPillar();
+      return;
+    }
 
     // ── Rare specials: independent probability per type ───────────────────────
     if (score >= 10000 && _rng.nextDouble() < 0.05) { _spawnGravZone(); return; }
     if (score >= 7000  && _rng.nextDouble() < 0.08) { _spawnPopWall();  return; }
     if (score >= 4000  && _rng.nextDouble() < 0.10) { _spawnRotating(); return; }
+
+    // ── Determine if we spawn a pattern or a single ──────────────────────────
+    final patternChance = (phase == DifficultyPhase.hard) ? 0.6 : 0.3;
+    if (_rng.nextDouble() < patternChance && score > 2000) {
+      _spawnRandomPattern();
+      return;
+    }
 
     // ── Normal obstacle pool ──────────────────────────────────────────────────
     final r = _rng.nextDouble();
@@ -123,6 +153,47 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
       else if (r < 0.78) { _spawnGate(); }
       else               { _spawnMoving(); }
     }
+  }
+
+  void _spawnRandomPattern() {
+    final r = _rng.nextInt(3);
+    switch (r) {
+      case 0: _patternSineWave(); break;
+      case 1: _patternStaircase(); break;
+      case 2: _patternDoubleGate(); break;
+    }
+  }
+
+  void _patternSineWave() {
+    final startTop = _rng.nextBool();
+    for (int i = 0; i < 4; i++) {
+      final isTop = (i % 2 == 0) ? startTop : !startTop;
+      _queue.add(_Queued(
+        delay: i * 0.45,
+        side: isTop ? ObstacleSide.top : ObstacleSide.bottom,
+        variant: ObstacleVariant.pillar,
+      ));
+    }
+  }
+
+  void _patternStaircase() {
+    final side = _rng.nextBool() ? ObstacleSide.top : ObstacleSide.bottom;
+    for (int i = 0; i < 3; i++) {
+      _queue.add(_Queued(
+        delay: i * 0.4,
+        side: side,
+        variant: ObstacleVariant.pillar,
+      ));
+    }
+  }
+
+  void _patternDoubleGate() {
+    _spawnGate();
+    _queue.add(_Queued(
+      delay: 0.8,
+      side: _rng.nextBool() ? ObstacleSide.top : ObstacleSide.bottom,
+      variant: ObstacleVariant.gate,
+    ));
   }
 
   // ── Normal obstacle spawners ──────────────────────────────────────────────

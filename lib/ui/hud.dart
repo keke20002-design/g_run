@@ -514,6 +514,7 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
             },
           ),
 
+
         // ── 일시정지 오버레이 ─────────────────────────────────────
         if (widget.isPaused)
           Positioned.fill(

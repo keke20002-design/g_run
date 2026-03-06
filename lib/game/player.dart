@@ -370,26 +370,27 @@ class Player extends PositionComponent
         obs.passed = true;
         obs.nearMissChecked = true;
         if (_nearMissCooldown <= 0) {
-          final maxH = game.difficultyManager.maxObstacleHeight;
-          // Slim spikes are narrower → discount height
-          final effectiveH =
-              obs.isSlim ? obs.obstacleHeight * 0.75 : obs.obstacleHeight;
-          final ratio = (effectiveH / maxH).clamp(0.0, 1.0);
-          // Near miss when obstacle is in the top 22% of height range
-          if (ratio >= 0.60) {
+          // 플레이어가 장애물과 반대 면일 때만 near miss 가능
+          // (같은 면이면 충돌 → 이미 dead, 또는 무관한 짧은 장애물)
+          final playerOnFloor = !isFlipped;
+          final obsOnFloor    = obs.side == ObstacleSide.bottom;
+          if (playerOnFloor == obsOnFloor) continue; // 같은 면 → near miss 아님
+
+          final maxH       = game.difficultyManager.maxObstacleHeight;
+          final effectiveH = obs.isSlim ? obs.obstacleHeight * 0.75 : obs.obstacleHeight;
+          final ratio      = (effectiveH / maxH).clamp(0.0, 1.0);
+
+          // 반대 면에서 키 큰 장애물을 피해 지나갔을 때 near miss
+          if (ratio >= 0.72) {
             final NearMissGrade grade;
-            if (ratio >= 0.89) {
-              grade = NearMissGrade.insane;
-            } else if (ratio >= 0.77) {
-              grade = NearMissGrade.superMiss;
-            } else if (ratio >= 0.68) {
-              grade = NearMissGrade.near;
-            } else {
-              grade = NearMissGrade.close;
-            }
+            if (ratio >= 0.92)      { grade = NearMissGrade.insane; }
+            else if (ratio >= 0.83) { grade = NearMissGrade.superMiss; }
+            else if (ratio >= 0.77) { grade = NearMissGrade.near; }
+            else                    { grade = NearMissGrade.close; }
             _nearMissCooldown = 0.15;
             game.scoreSystem.registerNearMiss();
             game.onNearMiss(grade);
+            game.spawner.addNearMissBonus(25.0);
           }
         }
       }
@@ -400,6 +401,7 @@ class Player extends PositionComponent
   void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollisionStart(intersectionPoints, other);
     if (other is Obstacle && !isDead) {
+      if (game.shieldActive) { game.absorbShieldHit(); return; }
       isDead = true;
       triggerDeathEffects();
       game.onPlayerDeath();

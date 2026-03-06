@@ -43,14 +43,17 @@ class GravZone extends PositionComponent
     super.onCollisionStart(intersectionPoints, other);
     if (!_triggered) {
       _triggered = true;
-      game.flipPlayer();
+      // 이미 천장에 있으면 다시 flip하지 않음 — 항상 천장 방향으로만 보냄
+      if (!game.player.isFlipped) {
+        game.flipPlayer();
+      }
     }
   }
 
   @override
   void onCollisionEnd(PositionComponent other) {
     super.onCollisionEnd(other);
-    _triggered = false; // allow flip again on re-entry
+    _triggered = false;
   }
 
   @override
