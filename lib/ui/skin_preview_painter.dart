@@ -205,6 +205,121 @@ class SkinPreviewPainter extends CustomPainter {
               ..strokeCap = StrokeCap.round
               ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
 
+      // ── Solar Flare (Common) ── radiant corona with pulsing rays
+      case 'solar_flare':
+        // Core glow
+        canvas.drawCircle(Offset.zero, radius * 0.3,
+            Paint()..color = Colors.yellow.withValues(alpha: 0.9)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+        // Pulsing corona rays
+        final rayCount = 8;
+        final rayPulse = 0.8 + sin(pTime * 3) * 0.2;
+        for (int i = 0; i < rayCount; i++) {
+          final a = pTime * 0.8 + i * 2 * pi / rayCount;
+          final innerR = radius * 0.35;
+          final outerR = radius * rayPulse * (0.7 + (i % 2) * 0.3);
+          canvas.drawLine(
+            Offset(cos(a) * innerR, sin(a) * innerR),
+            Offset(cos(a) * outerR, sin(a) * outerR),
+            Paint()..color = color.withValues(alpha: 0.7)
+              ..strokeWidth = 2.0..strokeCap = StrokeCap.round
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+          );
+        }
+        // Outer ring
+        canvas.drawCircle(Offset.zero, radius,
+            Paint()..color = color.withValues(alpha: 0.25)
+              ..style = PaintingStyle.stroke..strokeWidth = 1.5);
+
+      // ── Phantom Ring (Rare) ── fading echo rings expanding outward
+      case 'phantom_ring':
+        // Center dot
+        canvas.drawCircle(Offset.zero, radius * 0.12,
+            Paint()..color = color.withValues(alpha: 0.8));
+        // 3 echo rings expanding at different phases
+        for (int i = 0; i < 3; i++) {
+          final phase = ((pTime * 0.6 + i * 0.33) % 1.0);
+          final echoR = radius * (0.2 + phase * 0.8);
+          final echoAlpha = (1.0 - phase) * 0.6;
+          canvas.drawCircle(Offset.zero, echoR,
+              Paint()..color = color.withValues(alpha: echoAlpha)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2.0 - phase * 1.2
+                ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 + phase * 4));
+        }
+
+      // ── Nova Burst (Epic) ── star-shaped explosion with particle trails
+      case 'nova_burst':
+        // Bright core
+        final corePulse = 0.9 + sin(pTime * 6) * 0.1;
+        canvas.drawCircle(Offset.zero, radius * 0.2 * corePulse,
+            Paint()..color = Colors.white.withValues(alpha: 0.8)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+        // Star burst — 6 pointed
+        final starPath = Path();
+        for (int i = 0; i < 12; i++) {
+          final a = pTime * 1.2 + i * pi / 6;
+          final r = (i % 2 == 0) ? radius * 0.9 : radius * 0.45;
+          if (i == 0) { starPath.moveTo(cos(a) * r, sin(a) * r); }
+          else { starPath.lineTo(cos(a) * r, sin(a) * r); }
+        }
+        starPath.close();
+        canvas.drawPath(starPath,
+            Paint()..color = color.withValues(alpha: 0.12));
+        canvas.drawPath(starPath,
+            Paint()..color = color.withValues(alpha: 0.7)
+              ..style = PaintingStyle.stroke..strokeWidth = 1.8
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+        // Particle trails
+        final pRng = Random(77);
+        for (int p = 0; p < 6; p++) {
+          final pAngle = pTime * 2.0 + pRng.nextDouble() * 2 * pi;
+          final pDist = radius * (0.5 + pRng.nextDouble() * 0.4);
+          canvas.drawCircle(
+            Offset(cos(pAngle) * pDist, sin(pAngle) * pDist),
+            1.5 + pRng.nextDouble(),
+            Paint()..color = color.withValues(alpha: 0.5 + pRng.nextDouble() * 0.3)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+          );
+        }
+
+      // ── Void Walker (Legendary) ── dimensional rift with swirling vortex
+      case 'void_walker':
+        // Dark void center
+        canvas.drawCircle(Offset.zero, radius * 0.25,
+            Paint()..color = const Color(0xFF1A0030));
+        // Swirling vortex arcs (3 layers)
+        for (int layer = 0; layer < 3; layer++) {
+          final layerR = radius * (0.4 + layer * 0.25);
+          final speed = (layer % 2 == 0) ? 2.0 : -1.5;
+          final sweep = pi * (0.6 + layer * 0.2);
+          canvas.drawArc(
+            Rect.fromCircle(center: Offset.zero, radius: layerR),
+            pTime * speed + layer * pi / 3, sweep, false,
+            Paint()..color = color.withValues(alpha: 0.6 - layer * 0.12)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5 - layer * 0.5
+              ..strokeCap = StrokeCap.round
+              ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 + layer * 2),
+          );
+        }
+        // Rift particles
+        for (int i = 0; i < 5; i++) {
+          final pAngle = pTime * 3.0 + i * 2 * pi / 5;
+          final pDist = radius * (0.3 + sin(pTime * 2 + i) * 0.15 + i * 0.1);
+          canvas.drawCircle(
+            Offset(cos(pAngle) * pDist, sin(pAngle) * pDist),
+            1.8,
+            Paint()..color = color.withValues(alpha: 0.7)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+          );
+        }
+        // Outer unstable ring
+        canvas.drawCircle(Offset.zero, radius,
+            Paint()..color = color.withValues(alpha: 0.2 + sin(pTime * 5) * 0.1)
+              ..style = PaintingStyle.stroke..strokeWidth = 1.5
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+
       default:
         canvas.drawCircle(Offset.zero, radius,
             Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 2.5);
