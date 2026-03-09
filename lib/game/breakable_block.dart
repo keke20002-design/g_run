@@ -1,9 +1,8 @@
 import 'dart:math';
-import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'gravity_flip_game.dart';
-import 'player.dart';
+import 'player.dart' show Player;
 
 // ── 파편 데이터 ────────────────────────────────────────────────────────────────
 class _Frag {
@@ -17,8 +16,9 @@ class _Frag {
 // 플레이어가 닿으면 죽지 않고 블록이 산산조각 남. 점수 보너스.
 
 class BreakableBlock extends PositionComponent
-    with HasGameReference<GravityFlipGame>, CollisionCallbacks {
-  static const double _sz    = 36.0;
+    with HasGameReference<GravityFlipGame> {
+  static const double _w     = 78.0;
+  static const double _h     = 34.0;
   static const Color  _col   = Color(0xFFFFB300);
   static const Color  _colLt = Color(0xFFFFE082);
   static const Color  _body  = Color(0xFF3A2000);
@@ -28,6 +28,12 @@ class BreakableBlock extends PositionComponent
   bool   _broken   = false;
   double _breakAge = 0;
 
+  // 플레이어가 최근에 이 블록의 y구간을 지났는가 (유예 타이머 포함)
+  bool   _playerNearY      = false;
+  double _playerNearYTimer = 0.0;
+  // 0.45초 유예: 플레이어가 y구간을 통과한 뒤 0.45초 안에 x가 맞으면 깨짐
+  static const double _yGraceDuration = 0.45;
+
   final List<_Frag> _frags = [];
   final Random _rng = Random();
 
@@ -35,24 +41,26 @@ class BreakableBlock extends PositionComponent
   bool nearMissChecked = false;
 
   BreakableBlock({required Vector2 pos})
-      : super(position: pos, size: Vector2.all(_sz));
+      : super(position: pos, size: Vector2(_w, _h));
 
-  @override
-  Future<void> onLoad() async {
-    add(RectangleHitbox());
+  bool get isBroken => _broken;
+
+  /// 플레이어가 최근에 y구간을 통과한 적 있는가 (GravityFlipGame이 사용)
+  bool get playerPassedThroughY => _playerNearY;
+
+  /// x가 이미 맞는 상태에서 호출 — y조건은 호출자가 판단함. 그냥 shatter.
+  bool tryBreak() {
+    if (_broken) return false;
+    _shatter();
+    return true;
   }
 
   void _shatter() {
     if (_broken) return;
     _broken = true;
-    // 점수 보너스 (near miss 등록)
-    game.scoreSystem.registerNearMiss();
-    // 히트박스 제거
-    children.whereType<RectangleHitbox>().toList()
-        .forEach((h) => h.removeFromParent());
     // 파편 생성
-    final cx = _sz / 2;
-    final cy = _sz / 2;
+    final cx = _w / 2;
+    final cy = _h / 2;
     for (int i = 0; i < 12; i++) {
       final a  = _rng.nextDouble() * 2 * pi;
       final sp = 80 + _rng.nextDouble() * 120;
@@ -68,21 +76,25 @@ class BreakableBlock extends PositionComponent
   }
 
   @override
-  void onCollisionStart(
-      Set<Vector2> intersectionPoints, PositionComponent other) {
-    super.onCollisionStart(intersectionPoints, other);
-    if (other is Player && !other.isDead && !_broken) {
-      _shatter();
-    }
-  }
-
-  @override
   void update(double dt) {
     if (game.state != GameState.playing) { removeFromParent(); return; }
     if (_spawnAge < 0.12) _spawnAge += dt;
     _time += dt;
 
     position.x -= game.difficultyManager.speed * dt;
+
+    // 플레이어 y구간 통과 여부 추적 (broken 상태가 아닐 때만)
+    if (!_broken && !game.player.isDead) {
+      const ps = Player.playerSize;
+      final py = game.player.position.y;
+      if (py < position.y + _h && py + ps > position.y) {
+        _playerNearY      = true;
+        _playerNearYTimer = _yGraceDuration;
+      } else if (_playerNearYTimer > 0) {
+        _playerNearYTimer -= dt;
+        if (_playerNearYTimer <= 0) _playerNearY = false;
+      }
+    }
 
     if (_broken) {
       _breakAge += dt;
@@ -98,7 +110,7 @@ class BreakableBlock extends PositionComponent
       return;
     }
 
-    if (position.x + _sz < 0) removeFromParent();
+    if (position.x + _w < 0) removeFromParent();
   }
 
   @override

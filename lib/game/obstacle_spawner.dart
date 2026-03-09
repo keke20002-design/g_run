@@ -8,6 +8,7 @@ import 'rotating_obstacle.dart';
 import 'grav_zone.dart';
 import 'energy_barrier.dart';
 import 'breakable_block.dart';
+import 'breakable_pillar.dart';
 import 'electric_sphere.dart';
 import 'laser_cannon.dart';
 
@@ -79,10 +80,13 @@ class PopWarning extends PositionComponent
 // ── Spawner ───────────────────────────────────────────────────────────────────
 
 class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
-  double _timeSinceLastSpawn = 0;
+  // Start pre-loaded so first obstacle appears ~1.8s into the game
+  double _timeSinceLastSpawn = 2.2;
   double _nearMissBonus      = 0;
   final List<_Queued> _queue = [];
   final Random _rng = Random();
+
+  bool _firstObstacleSpawned = false;
 
   double get _spawnInterval {
     final dm = game.difficultyManager;
@@ -119,7 +123,30 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     _nearMissBonus += dtBonus;
   }
 
+  void _spawnFirstObstacle() {
+    final dm      = game.difficultyManager;
+    final screenW = game.size.x;
+    final screenH = game.size.y;
+    // Fixed medium-height bottom pillar at 70% speed with warning label
+    final h = dm.maxObstacleHeight * 0.75;
+    game.add(Obstacle(
+      pos:           Vector2(screenW, screenH - h),
+      side:          ObstacleSide.bottom,
+      obstacleHeight: h,
+      variant:       ObstacleVariant.pillar,
+      speedOverride: dm.speed * 0.70,
+      showWarning:   true,
+    ));
+  }
+
   void _pickAndSpawn() {
+    // Tutorial: first obstacle is always slow + labeled
+    if (!_firstObstacleSpawned) {
+      _firstObstacleSpawned = true;
+      _spawnFirstObstacle();
+      return;
+    }
+
     final score = game.scoreSystem.score;
     final phase = game.difficultyManager.currentPhase;
 
@@ -145,26 +172,37 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
 
     // ── Normal obstacle pool ──────────────────────────────────────────────────
     final r = _rng.nextDouble();
-    if (score < 1500) {
+    if (score < 1000) {
       _spawnPillar();
+    } else if (score < 1500) {
+      if (r < 0.40)      { _spawnPillar(); }
+      else if (r < 0.70) { _spawnBreakableBlock(); }
+      else               { _spawnBreakablePillar(); } // 30%
     } else if (score < 2000) {
-      if (r < 0.65) { _spawnPillar(); } else { _spawnMoving(); }
+      if (r < 0.40)      { _spawnPillar(); }
+      else if (r < 0.65) { _spawnMoving(); }
+      else if (r < 0.82) { _spawnBreakablePillar(); } // 17%
+      else               { _spawnBreakableBlock(); }  // 18%
     } else if (score < 3000) {
-      if (r < 0.45)      { _spawnPillar(); }
-      else if (r < 0.70) { _spawnMoving(); }
-      else               { _spawnEnergyBarrier(); }
-    } else if (score < 5000) {
       if (r < 0.35)      { _spawnPillar(); }
       else if (r < 0.55) { _spawnMoving(); }
-      else if (r < 0.72) { _spawnSpikeBurst(); }
-      else               { _spawnBreakableBlock(); }
+      else if (r < 0.68) { _spawnEnergyBarrier(); }
+      else if (r < 0.82) { _spawnBreakablePillar(); } // 14%
+      else               { _spawnBreakableBlock(); }  // 18%
+    } else if (score < 5000) {
+      if (r < 0.25)      { _spawnPillar(); }
+      else if (r < 0.40) { _spawnMoving(); }
+      else if (r < 0.52) { _spawnSpikeBurst(); }
+      else if (r < 0.68) { _spawnBreakableBlock(); }  // 16%
+      else               { _spawnBreakablePillar(); } // 32%
     } else {
-      if (r < 0.28)      { _spawnPillar(); }
-      else if (r < 0.46) { _spawnSpikeBurst(); }
-      else if (r < 0.64) { _spawnGate(); }
-      else if (r < 0.78) { _spawnMoving(); }
-      else if (r < 0.90) { _spawnEnergyBarrier(); }
-      else               { _spawnBreakableBlock(); }
+      if (r < 0.20)      { _spawnPillar(); }
+      else if (r < 0.35) { _spawnSpikeBurst(); }
+      else if (r < 0.48) { _spawnGate(); }
+      else if (r < 0.60) { _spawnMoving(); }
+      else if (r < 0.68) { _spawnEnergyBarrier(); }
+      else if (r < 0.82) { _spawnBreakableBlock(); }  // 14%
+      else               { _spawnBreakablePillar(); } // 18%
     }
   }
 
@@ -334,6 +372,19 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     game.add(BreakableBlock(pos: Vector2(screenW, y)));
   }
 
+  void _spawnBreakablePillar() {
+    final screenH = game.size.y;
+    final screenW = game.size.x;
+    final isTop   = _rng.nextBool();
+    final h       = 50.0 + _rng.nextDouble() * 60.0;
+    final y       = isTop ? 0.0 : screenH - h;
+    game.add(BreakablePillar(
+      pos:          Vector2(screenW, y),
+      side:         isTop ? PillarSide.top : PillarSide.bottom,
+      pillarHeight: h,
+    ));
+  }
+
   void _spawnElectricSphere() {
     final screenH = game.size.y;
     final screenW = game.size.x;
@@ -376,7 +427,8 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
   double _randomHeight(double max) => 40 + _rng.nextDouble() * (max - 40);
 
   void reset() {
-    _timeSinceLastSpawn = 0;
+    _timeSinceLastSpawn  = 2.2;
+    _firstObstacleSpawned = false;
     _queue.clear();
   }
 }

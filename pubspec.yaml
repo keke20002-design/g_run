@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.0
+  sdk: ^3.11.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -64,9 +64,8 @@ flutter:
     - assets/images/logo.png
     - assets/audio/Jump.wav
     - assets/audio/Anti.wav
-    - assets/audio/Button.wav
     - assets/audio/Over.wav
-
+    - assets/audio/Button.wav
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a

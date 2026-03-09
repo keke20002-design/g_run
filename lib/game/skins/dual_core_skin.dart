@@ -26,7 +26,7 @@ class DualCoreSkin extends WheelSkin {
   void update(double dt) {
     super.update(dt);
     
-    final speedMult = (currentSpeed / 35.0).clamp(5.0, 15.0);
+    final speedMult = (currentSpeed / 15.0).clamp(5.0, 15.0);
     _outerRot += dt * speedMult;
     _innerRot -= dt * speedMult * 0.8;
 

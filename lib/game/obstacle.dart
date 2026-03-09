@@ -34,6 +34,11 @@ class Obstacle extends PositionComponent
   bool passed          = false;
   bool nearMissChecked = false;
 
+  /// Optional per-obstacle speed override (for tutorial first obstacle).
+  final double? speedOverride;
+  /// Show ⚠ OBSTACLE warning label (tutorial first obstacle).
+  final bool showWarning;
+
   double _oscillateTime = 0;
   final double _baseY;
 
@@ -50,6 +55,8 @@ class Obstacle extends PositionComponent
     this.isSlim             = false,
     this.isMoving           = false,
     this.oscillateAmplitude = 0,
+    this.speedOverride,
+    this.showWarning        = false,
     bool isInstant          = false,
   })  : _baseY    = pos.y,
         _spawnAge = isInstant ? _fadeInDuration : 0.0,
@@ -69,7 +76,7 @@ class Obstacle extends PositionComponent
   @override
   void update(double dt) {
     if (_spawnAge < _fadeInDuration) _spawnAge += dt;
-    position.x -= game.difficultyManager.speed * dt;
+    position.x -= (speedOverride ?? game.difficultyManager.speed) * dt;
     if (position.x + size.x < 0) {
       removeFromParent();
       return;
@@ -126,6 +133,9 @@ class Obstacle extends PositionComponent
       );
     }
 
+    // ── Tutorial warning label ─────────────────────────────────────
+    if (showWarning && !passed) _drawWarningLabel(canvas);
+
     // ── Danger-tip bright edge (the exposed pointy end) ───────────
     // bottom obstacle → tip is at top (y=0); top obstacle → tip at bottom
     final tipY = side == ObstacleSide.bottom ? 0.5 : size.y - 0.5;
@@ -149,5 +159,37 @@ class Obstacle extends PositionComponent
         ..strokeWidth = isSlim ? 2.0 : 1.5
         ..style       = PaintingStyle.stroke,
     );
+  }
+
+  void _drawWarningLabel(Canvas canvas) {
+    const warnColor = Color(0xFFFF8C00);
+    final tp = TextPainter(
+      text: const TextSpan(
+        text: '⚠ OBSTACLE',
+        style: TextStyle(
+          color: warnColor,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final labelY = side == ObstacleSide.bottom ? -tp.height - 4.0 : size.y + 4.0;
+    final labelX = (size.x - tp.width) / 2;
+
+    // Glow
+    canvas.save();
+    canvas.translate(labelX, labelY);
+    canvas.drawRect(
+      Rect.fromLTWH(-2, -1, tp.width + 4, tp.height + 2),
+      Paint()
+        ..color      = warnColor.withValues(alpha: 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    canvas.restore();
+
+    tp.paint(canvas, Offset(labelX, labelY));
   }
 }

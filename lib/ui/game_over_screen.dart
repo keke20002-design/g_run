@@ -63,10 +63,10 @@ class _GameOverScreenState extends State<GameOverScreen>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Dark background
+          // ── Dark background ─────────────────────────────────────────
           Container(color: const Color(0xD2070B14)),
 
-          // Glitch overlay
+          // ── Glitch overlay ──────────────────────────────────────────
           Positioned.fill(
             child: AnimatedBuilder(
               animation: _glitchCtrl,
@@ -76,122 +76,144 @@ class _GameOverScreenState extends State<GameOverScreen>
             ),
           ),
 
-          // Content
-          Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ── GAME OVER ──────────────────────────────────────────
-                  Text(
-                    'GAME OVER',
-                    style: const TextStyle(
-                      color: Color(0xFFE040FB),
-                      fontSize: 44,
-                      fontWeight: FontWeight.w100,
-                      letterSpacing: 16,
-                      shadows: [
-                        Shadow(
-                          color: Color(0xFFE040FB),
-                          blurRadius: 28,
-                        ),
-                      ],
+          // ── Main content (title + score/stats) ──────────────────────
+          Padding(
+            padding: const EdgeInsets.only(bottom: 96),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // GAME OVER title
+                Text(
+                  'GAME OVER',
+                  style: const TextStyle(
+                    color: Color(0xFFE040FB),
+                    fontSize: 44,
+                    fontWeight: FontWeight.w100,
+                    letterSpacing: 16,
+                    shadows: [
+                      Shadow(color: Color(0xFFE040FB), blurRadius: 28),
+                    ],
+                  ),
+                )
+                    .animate()
+                    .fadeIn(duration: 350.ms)
+                    .shimmer(
+                      duration: 900.ms,
+                      delay: 200.ms,
+                      color: Colors.white.withValues(alpha: 0.35),
                     ),
-                  )
-                      .animate()
-                      .fadeIn(duration: 350.ms)
-                      .shimmer(
-                        duration: 900.ms,
-                        delay: 200.ms,
-                        color: Colors.white.withValues(alpha: 0.35),
+
+                const SizedBox(height: 20),
+
+                // Left: Score  |  Right: Stats
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // ── Score (left half) ──────────────────────────────
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TweenAnimationBuilder<int>(
+                            tween: IntTween(begin: 0, end: widget.score),
+                            duration: const Duration(milliseconds: 1200),
+                            curve: Curves.easeOut,
+                            builder: (context, value, _) => Text(
+                              '$value',
+                              style: const TextStyle(
+                                color: Color(0xFF00E5FF),
+                                fontSize: 74,
+                                fontWeight: FontWeight.w200,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0xFF00E5FF),
+                                    blurRadius: 22,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (widget.isNewBest)
+                            Text(
+                              '★  NEW BEST  ★',
+                              style: const TextStyle(
+                                color: Color(0xFFFFD700),
+                                fontSize: 15,
+                                letterSpacing: 4,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0xFFFFD700),
+                                    blurRadius: 14,
+                                  ),
+                                ],
+                              ),
+                            )
+                                .animate(onPlay: (c) => c.repeat(reverse: true))
+                                .shimmer(
+                                  duration: 1200.ms,
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                )
+                          else
+                            Text(
+                              'BEST  ${widget.bestScore}',
+                              style: const TextStyle(
+                                color: Color(0xFF475569),
+                                fontSize: 14,
+                                letterSpacing: 3,
+                              ),
+                            ),
+                        ],
                       ),
+                    ),
 
-                  const SizedBox(height: 44),
-
-                  // ── Score count-up ──────────────────────────────────────
-                  TweenAnimationBuilder<int>(
-                    tween: IntTween(begin: 0, end: widget.score),
-                    duration: const Duration(milliseconds: 1200),
-                    curve: Curves.easeOut,
-                    builder: (context, value, _) => Text(
-                      '$value',
-                      style: const TextStyle(
-                        color: Color(0xFF00E5FF),
-                        fontSize: 74,
-                        fontWeight: FontWeight.w200,
-                        shadows: [
-                          Shadow(
-                            color: Color(0xFF00E5FF),
-                            blurRadius: 22,
+                    // ── Stats (right half) ─────────────────────────────
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _StatRow(label: 'DISTANCE', value: '$distance m'),
+                          const SizedBox(height: 10),
+                          _StatRow(
+                            label: 'BEST',
+                            value: '${widget.bestScore}',
+                          ),
+                          const SizedBox(height: 10),
+                          _StatRow(
+                            label: 'GP EARNED',
+                            value: '+${widget.gpEarned} GP',
+                            valueColor: const Color(0xFF9D5BFF),
                           ),
                         ],
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  // ── NEW BEST / BEST ─────────────────────────────────────
-                  if (widget.isNewBest)
-                    Text(
-                      '★  NEW BEST  ★',
-                      style: const TextStyle(
-                        color: Color(0xFFFFD700),
-                        fontSize: 15,
-                        letterSpacing: 4,
-                        shadows: [
-                          Shadow(color: Color(0xFFFFD700), blurRadius: 14),
-                        ],
-                      ),
-                    )
-                        .animate(onPlay: (c) => c.repeat(reverse: true))
-                        .shimmer(
-                          duration: 1200.ms,
-                          color: Colors.white.withValues(alpha: 0.55),
-                        )
-                  else
-                    Text(
-                      'BEST  ${widget.bestScore}',
-                      style: const TextStyle(
-                        color: Color(0xFF475569),
-                        fontSize: 14,
-                        letterSpacing: 3,
-                      ),
-                    ),
-
-                  const SizedBox(height: 30),
-
-                  // ── Stats ───────────────────────────────────────────────
-                  _StatRow(label: 'DISTANCE', value: '$distance m'),
-                  const SizedBox(height: 6),
-                  _StatRow(
-                    label: 'BEST',
-                    value: '${widget.bestScore}',
-                  ),
-                  const SizedBox(height: 6),
-                  _StatRow(
-                    label: 'GP EARNED',
-                    value: '+${widget.gpEarned} GP',
-                    valueColor: const Color(0xFF9D5BFF),
-                  ),
-
-                  const SizedBox(height: 52),
-
-                  // ── RESTART button ──────────────────────────────────────
-                  _NeonOutlineButton(
-                    text: 'TAP TO RESTART',
-                    onTap: widget.onRestart,
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // ── MENU button (smaller, no pulse) ─────────────────────
-                  _MenuButton(onTap: widget.onMenu),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+
+          // ── Buttons fixed at bottom ─────────────────────────────────
+          Positioned(
+            bottom: 28,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _NeonOutlineButton(
+                  text: 'RETRY',
+                  onTap: widget.onRestart,
+                ),
+                const SizedBox(width: 24),
+                _MenuButton(onTap: widget.onMenu),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -267,10 +289,10 @@ class _NeonOutlineButton extends StatelessWidget {
             ),
           ],
         ),
-        child: const Center(
+        child: Center(
           child: Text(
-            'TAP TO RESTART',
-            style: TextStyle(
+            text,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
               fontWeight: FontWeight.w600,

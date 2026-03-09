@@ -51,6 +51,11 @@ class _GamePageState extends State<GamePage> {
   int    _score      = 0;
   double _multiplier = 1.0;
   int    _combo      = 0;
+  int    _nearMissCombo = 1;
+
+  // Tutorial
+  TutorialStep _tutorialStep    = TutorialStep.tap;
+  bool         _showGoHighScore = false;
 
   @override
   void initState() {
@@ -58,6 +63,7 @@ class _GamePageState extends State<GamePage> {
     _game = GravityFlipGame();
     _game.onDeath            = _onDeath;
     _game.onNearMissCallback = _onNearMiss;
+    _game.onTutorialStep     = _onTutorialStep;
   }
 
   void _onDeath() {
@@ -71,16 +77,40 @@ class _GamePageState extends State<GamePage> {
 
   void _onNearMiss(NearMissGrade grade) {
     if (!mounted) return;
+    final combo = _game.scoreSystem.combo;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() => _nearMissGrade = grade);
+      setState(() {
+        _nearMissGrade = grade;
+        _nearMissCombo = combo;
+      });
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) setState(() => _nearMissGrade = null);
       });
     });
   }
 
+  void _onTutorialStep(TutorialStep step) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _tutorialStep = step;
+        if (step == TutorialStep.done) {
+          _showGoHighScore = true;
+        }
+      });
+      // Hide "GO FOR HIGH SCORE" after 2 seconds
+      if (step == TutorialStep.done) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _showGoHighScore = false);
+        });
+      }
+    });
+  }
+
   void _exitToMain() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     if (_isPaused) {
       _game.paused = false;
       _isPaused = false;
@@ -107,15 +137,22 @@ class _GamePageState extends State<GamePage> {
     }
     _gpBefore = SkinManager.instance.gravityPoints;
     setState(() {
-      _isDead       = false;
-      _isStarted    = true;
-      _score        = 0;
-      _multiplier   = 1.0;
-      _combo        = 0;
-      _gpEarned     = 0;
-      _nearMissGrade = null;
+      _isDead          = false;
+      _isStarted       = true;
+      _score           = 0;
+      _multiplier      = 1.0;
+      _combo           = 0;
+      _gpEarned        = 0;
+      _nearMissGrade   = null;
+      _nearMissCombo   = 1;
+      _tutorialStep    = TutorialStep.tap;
+      _showGoHighScore = false;
     });
     _game.startGame();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
   }
 
   @override
@@ -148,6 +185,7 @@ class _GamePageState extends State<GamePage> {
                   multiplier: _multiplier,
                   combo: _combo,
                   nearMissGrade: _nearMissGrade,
+                  nearMissCombo: _nearMissCombo,
                   isPaused: _isPaused,
                   gpPoints: SkinManager.instance.gravityPoints +
                       _game.scoreSystem.liveGPEarned(
@@ -169,6 +207,14 @@ class _GamePageState extends State<GamePage> {
               onMenu: _exitToMain,
             ),
 
+          // ── Tutorial: TAP TO FLIP hint ─────────────────────────
+          if (_isStarted && !_isDead && _tutorialStep == TutorialStep.tap)
+            _TapToFlipHint(),
+
+          // ── Tutorial: GO FOR HIGH SCORE ────────────────────────
+          if (_isStarted && !_isDead && _showGoHighScore)
+            _GoHighScoreOverlay(),
+
           // ── Vignette (always visible) ──────────────────────────
           IgnorePointer(
             child: Container(
@@ -186,6 +232,118 @@ class _GamePageState extends State<GamePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Tutorial: TAP TO FLIP hint ────────────────────────────────────────────────
+
+class _TapToFlipHint extends StatefulWidget {
+  @override
+  State<_TapToFlipHint> createState() => _TapToFlipHintState();
+}
+
+class _TapToFlipHintState extends State<_TapToFlipHint>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blinkCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _blinkCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _blinkCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _blinkCtrl,
+        builder: (_, __) {
+          final alpha = 0.30 + 0.70 * _blinkCtrl.value;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+                // TAP TO FLIP text
+                Positioned(
+                  top: MediaQuery.of(context).size.height * 0.40,
+                  left: 0, right: 0,
+                  child: Center(
+                    child: Text(
+                      'TAP TO FLIP',
+                      style: TextStyle(
+                        color: const Color(0xFF00E5FF).withValues(alpha: alpha),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 5,
+                        shadows: [
+                          Shadow(
+                            color: const Color(0xFF00E5FF).withValues(alpha: alpha * 0.70),
+                            blurRadius: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Finger icon below text
+                Positioned(
+                  top: MediaQuery.of(context).size.height * 0.40 + 40,
+                  left: 0, right: 0,
+                  child: Center(
+                    child: Transform.translate(
+                      offset: Offset(0, _blinkCtrl.value * 6),
+                      child: Text(
+                        '👆',
+                        style: TextStyle(
+                          fontSize: 28,
+                          color: Colors.white.withValues(alpha: alpha * 0.90),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+    );
+  }
+}
+
+// ── Tutorial: GO FOR HIGH SCORE overlay ───────────────────────────────────────
+
+class _GoHighScoreOverlay extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Center(
+        child: Text(
+            'GO FOR HIGH SCORE',
+            style: const TextStyle(
+              color: Color(0xFF00E5FF),
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 4,
+              shadows: [
+                Shadow(color: Color(0xFF00E5FF), blurRadius: 20),
+                Shadow(color: Color(0xFF00E5FF), blurRadius: 40),
+              ],
+            ),
+          )
+              .animate()
+              .fade(begin: 0, end: 1, duration: 400.ms)
+              .then(delay: 1200.ms)
+              .fade(begin: 1, end: 0, duration: 400.ms),
       ),
     );
   }

@@ -13,6 +13,7 @@ import 'rotating_obstacle.dart';
 import 'grav_zone.dart';
 import 'energy_barrier.dart';
 import 'breakable_block.dart';
+import 'breakable_pillar.dart';
 import 'electric_sphere.dart';
 import 'laser_cannon.dart';
 import 'player.dart';
@@ -20,6 +21,8 @@ import 'player.dart';
 export 'gravity_flip_game.dart';
 
 enum GameState { playing, dead, menu }
+
+enum TutorialStep { tap, obstacle, nearMiss, combo, done }
 
 class GravityFlipGame extends FlameGame
     with TapCallbacks, HasCollisionDetection {
@@ -34,6 +37,10 @@ class GravityFlipGame extends FlameGame
   VoidCallback? onDeath;
   VoidCallback? onFlip;
   void Function(NearMissGrade)? onNearMissCallback;
+  void Function(TutorialStep)? onTutorialStep;
+
+  TutorialStep tutorialStep        = TutorialStep.tap;
+  int          _tutorialNearMissCount = 0;
 
   // Death shake
   double _shakeTime = 0;
@@ -94,6 +101,7 @@ class GravityFlipGame extends FlameGame
     children.whereType<GravZone>().toList().forEach((o) => o.removeFromParent());
     children.whereType<EnergyBarrier>().toList().forEach((o) => o.removeFromParent());
     children.whereType<BreakableBlock>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakablePillar>().toList().forEach((o) => o.removeFromParent());
     children.whereType<ElectricSphere>().toList().forEach((o) => o.removeFromParent());
     children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());
@@ -109,23 +117,37 @@ class GravityFlipGame extends FlameGame
     _shieldHitTime       = 0.0;
     difficultyManager.reset();
     scoreSystem.reset();
-    _totalTime           = 0;
-    _caTime              = 0;
-    _milestoneBoostTime  = 0;
-    _lastMilestone       = 0;
-    _highEnergyTimer     = 0;
-    _highEnergyTriggered = false;
+    _totalTime              = 0;
+    _caTime                 = 0;
+    _milestoneBoostTime     = 0;
+    _lastMilestone          = 0;
+    _highEnergyTimer        = 0;
+    _highEnergyTriggered    = false;
+    tutorialStep            = TutorialStep.tap;
+    _tutorialNearMissCount  = 0;
     state = GameState.playing;
   }
 
   @override
   void onTapDown(TapDownEvent event) {
     if (paused) return;
-    if (state == GameState.playing) player.flip();
+    if (state == GameState.playing) {
+      // Tutorial: first tap dismisses TAP TO FLIP hint
+      if (tutorialStep == TutorialStep.tap) {
+        tutorialStep = TutorialStep.obstacle;
+        onTutorialStep?.call(TutorialStep.obstacle);
+      }
+      player.flip();
+    }
   }
 
   @override
   void update(double dt) {
+    // Record player Y before children update (for sweep collision)
+    final prevY = (state == GameState.playing && !player.isDead)
+        ? player.position.y
+        : -1.0;
+
     // Slow-motion: scale child updates, but pass real dt to death effects
     super.update(dt * _timescale);
     if (state == GameState.dead) {
@@ -134,8 +156,43 @@ class GravityFlipGame extends FlameGame
     }
     if (state != GameState.playing) return;
     final sdt = dt * _timescale;
-    difficultyManager.update(sdt, scoreSystem.score);
+    difficultyManager.update(sdt, scoreSystem.difficultyScore);
     scoreSystem.update(sdt, difficultyManager.speed);
+
+    // BreakableBlock collision:
+    // 1) 이번 프레임 sweep (플레이어 이동 경로 전체)
+    // 2) 플레이어가 최근 0.45초 안에 블록 y구간을 지난 경우 (유예 플래그)
+    if (!player.isDead && prevY >= 0) {
+      const ps = Player.playerSize;
+      final currY = player.position.y;
+      final px    = player.position.x;
+      final sweepTop    = min(prevY, currY);
+      final sweepBottom = max(prevY, currY) + ps;
+      for (final bb in children.whereType<BreakableBlock>().toList()) {
+        if (bb.isBroken) continue;
+        // X 겹침 확인
+        if (px + ps <= bb.position.x || px >= bb.position.x + bb.size.x) continue;
+        // Y 조건: 이번 프레임 sweep OR 유예 플래그
+        final sweepHit = sweepBottom > bb.position.y && sweepTop < bb.position.y + bb.size.y;
+        if (!sweepHit && !bb.playerPassedThroughY) continue;
+        if (bb.tryBreak()) {
+          scoreSystem.registerNearMiss();
+          onNearMiss(NearMissGrade.close);
+        }
+      }
+
+      // BreakablePillar 충돌 (top/bottom 부착 기둥)
+      for (final bp in children.whereType<BreakablePillar>().toList()) {
+        if (bp.isBroken) continue;
+        if (px + ps <= bp.position.x || px >= bp.position.x + bp.size.x) continue;
+        final sweepHit = sweepBottom > bp.position.y && sweepTop < bp.position.y + bp.size.y;
+        if (!sweepHit && !bp.playerPassedThroughY) continue;
+        if (bp.tryBreak()) {
+          scoreSystem.registerNearMiss();
+          onNearMiss(NearMissGrade.close);
+        }
+      }
+    }
     if (_shakeTime          > 0) _shakeTime          -= sdt;
     if (_flipShakeTime      > 0) _flipShakeTime      -= sdt;
     if (_caTime             > 0) _caTime             -= sdt;
@@ -181,13 +238,6 @@ class GravityFlipGame extends FlameGame
     final score = scoreSystem.score;
     final zoom  = score >= 1000 ? 1.02 : 1.0;
 
-    // 3000+ ambient micro-vibration (stronger at 5000+)
-    if (state == GameState.playing && score >= 3000 &&
-        _shakeTime <= 0 && _flipShakeTime <= 0) {
-      final amp = score >= 5000 ? 3.0 : 0.5;
-      dx += sin(_totalTime * 23.0) * amp;
-      dy += sin(_totalTime * 17.0) * amp * 0.8;
-    }
 
     // Milestone CA jitter (horizontal glitch)
     if (_caTime > 0) {
@@ -310,7 +360,46 @@ class GravityFlipGame extends FlameGame
       difficultyManager.consumeGauge();
       shieldActive = true;
     }
+
+    // ── Tutorial progression ────────────────────────────────────────
+    if (tutorialStep != TutorialStep.done) {
+      if (tutorialStep == TutorialStep.tap || tutorialStep == TutorialStep.obstacle) {
+        tutorialStep = TutorialStep.nearMiss;
+        onTutorialStep?.call(TutorialStep.nearMiss);
+      } else if (tutorialStep == TutorialStep.nearMiss) {
+        _tutorialNearMissCount++;
+        if (_tutorialNearMissCount >= 2) {
+          tutorialStep = TutorialStep.combo;
+          onTutorialStep?.call(TutorialStep.combo);
+          // Schedule tutorial done after 3 seconds
+          Future.delayed(const Duration(seconds: 3), () {
+            if (state == GameState.playing && tutorialStep == TutorialStep.combo) {
+              tutorialStep = TutorialStep.done;
+              onTutorialStep?.call(TutorialStep.done);
+            }
+          });
+        }
+      }
+    }
+
+    // ── Near Miss 10-stage combo effects ────────────────────────────
+    final combo = scoreSystem.combo;
+    if (combo == 5) {
+      // RISK MASTER: 0.1s slow-motion
+      _triggerBriefSlowMo();
+    }
+    if (combo >= 9) {
+      // GODLIKE+: screen shake
+      _shakeTime = _shakeDuration * 0.45;
+    }
+
     onNearMissCallback?.call(grade);
+  }
+
+  Future<void> _triggerBriefSlowMo() async {
+    _timescale = 0.25;
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (state == GameState.playing) _timescale = 1.0;
   }
 
   void _drawComboRing(Canvas canvas) {
@@ -430,6 +519,7 @@ class GravityFlipGame extends FlameGame
     children.whereType<GravZone>().toList().forEach((o) => o.removeFromParent());
     children.whereType<EnergyBarrier>().toList().forEach((o) => o.removeFromParent());
     children.whereType<BreakableBlock>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakablePillar>().toList().forEach((o) => o.removeFromParent());
     children.whereType<ElectricSphere>().toList().forEach((o) => o.removeFromParent());
     children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());

@@ -9,6 +9,7 @@ class HUD extends StatefulWidget {
   final double multiplier;
   final int combo;
   final NearMissGrade? nearMissGrade;
+  final int nearMissCombo;
   final bool isPaused;
   final int gpPoints;
   final VoidCallback? onExit;
@@ -22,6 +23,7 @@ class HUD extends StatefulWidget {
     required this.combo,
     required this.gpPoints,
     this.nearMissGrade,
+    this.nearMissCombo = 1,
     this.isPaused = false,
     this.onExit,
     this.onPause,
@@ -36,6 +38,7 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
   late final AnimationController _lightningCtrl;
   late final AnimationController _rainbowCtrl;
   late final AnimationController _nearMissScoreCtrl;
+  late final AnimationController _comboPulseCtrl;
 
   static const _accent = Color(0xFF00E5FF);
 
@@ -58,6 +61,10 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 280),
     );
+    _comboPulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
   }
 
   @override
@@ -67,6 +74,10 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
     if (widget.nearMissGrade != null && old.nearMissGrade == null) {
       _particleCtrl.forward(from: 0);
       _nearMissScoreCtrl.forward(from: 0);
+    }
+    // 콤보 증가 → 중앙 COMBO x{n} 팝
+    if (widget.combo > old.combo && widget.combo > 1) {
+      _comboPulseCtrl.forward(from: 0);
     }
     // 1000점 마다 → 별 파티클
     if (widget.score ~/ 1000 > old.score ~/ 1000) {
@@ -85,6 +96,7 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
     _lightningCtrl.dispose();
     _rainbowCtrl.dispose();
     _nearMissScoreCtrl.dispose();
+    _comboPulseCtrl.dispose();
     super.dispose();
   }
 
@@ -121,64 +133,69 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
     return 38;
   }
 
-  // ── Near Miss 등급별 스타일 헬퍼 ──────────────────────────────────────────────
-  String _nearMissLabel(NearMissGrade grade) {
-    switch (grade) {
-      case NearMissGrade.insane:    return '⚡ PERFECT ⚡';
-      case NearMissGrade.superMiss: return 'GREAT';
-      case NearMissGrade.near:      return 'GOOD';
-      case NearMissGrade.close:     return 'NICE';
-    }
+  // ── Near Miss 10-stage 콤보 시스템 ────────────────────────────────────────────
+  static const _stageNames = [
+    'NEAR MISS',       // 1
+    'NEAR MISS x2',    // 2
+    'COMBO START',     // 3
+    'DANGER PLAY',     // 4
+    'RISK MASTER',     // 5
+    'INSANE',          // 6
+    'UNTOUCHABLE',     // 7
+    'COSMIC FLOW',     // 8
+    'GODLIKE',         // 9
+    'LEGENDARY COMBO', // 10+
+  ];
+
+  String _stageLabel(int combo) {
+    final i = (combo - 1).clamp(0, _stageNames.length - 1);
+    return _stageNames[i];
   }
 
+  Color _stageColor(int combo) {
+    if (combo >= 10) return const Color(0xFFFFD700); // gold
+    if (combo >= 7)  return const Color(0xFFA855F7); // purple
+    if (combo >= 4)  return const Color(0xFFFF8C00); // orange
+    if (combo >= 2)  return const Color(0xFF00FFA3); // green
+    return const Color(0xFF00E5FF);                  // cyan
+  }
+
+  double _stageFontSize(int combo) {
+    if (combo >= 10) return 38;
+    if (combo >= 7)  return 34;
+    if (combo >= 4)  return 30;
+    if (combo >= 2)  return 26;
+    return 22;
+  }
+
+  List<Shadow> _stageShadows(int combo) {
+    final c = _stageColor(combo);
+    if (combo >= 10) {
+      return [
+        Shadow(blurRadius: 22, color: c),
+        Shadow(blurRadius: 48, color: c),
+        const Shadow(blurRadius: 80, color: Color(0xFFFFAA00)),
+      ];
+    }
+    if (combo >= 7) {
+      return [
+        Shadow(blurRadius: 18, color: c),
+        Shadow(blurRadius: 40, color: c),
+      ];
+    }
+    if (combo >= 4) {
+      return [Shadow(blurRadius: 14, color: c), Shadow(blurRadius: 30, color: c)];
+    }
+    return [Shadow(blurRadius: 10, color: c)];
+  }
+
+  // ── Near Miss 등급별 보너스 점수 헬퍼 ─────────────────────────────────────────
   String _nearMissBonus(NearMissGrade grade) {
     switch (grade) {
       case NearMissGrade.insane:    return '+100 BONUS';
       case NearMissGrade.superMiss: return '+75 BONUS';
       case NearMissGrade.near:      return '+50 BONUS';
       case NearMissGrade.close:     return '+25 BONUS';
-    }
-  }
-
-  Color _nearMissColor(NearMissGrade grade) {
-    switch (grade) {
-      case NearMissGrade.insane:    return const Color(0xFFFFD700);
-      case NearMissGrade.superMiss: return const Color(0xFF00E5FF);
-      case NearMissGrade.near:      return const Color(0xFF00FFA3);
-      case NearMissGrade.close:     return const Color(0xFFFF6EFF);
-    }
-  }
-
-  double _nearMissFontSize(NearMissGrade grade) {
-    switch (grade) {
-      case NearMissGrade.insane:    return 38;
-      case NearMissGrade.superMiss: return 32;
-      case NearMissGrade.near:      return 30;
-      case NearMissGrade.close:     return 24;
-    }
-  }
-
-  List<Shadow> _nearMissShadows(NearMissGrade grade) {
-    final c = _nearMissColor(grade);
-    switch (grade) {
-      case NearMissGrade.insane:
-        return [
-          Shadow(blurRadius: 20, color: c),
-          Shadow(blurRadius: 45, color: c),
-          const Shadow(blurRadius: 70, color: Color(0xFFFFAA00)),
-        ];
-      case NearMissGrade.superMiss:
-        return [
-          Shadow(blurRadius: 16, color: c),
-          Shadow(blurRadius: 36, color: c),
-        ];
-      case NearMissGrade.near:
-        return [
-          Shadow(blurRadius: 14, color: c),
-          Shadow(blurRadius: 30, color: c),
-        ];
-      case NearMissGrade.close:
-        return [Shadow(blurRadius: 8, color: c)];
     }
   }
 
@@ -344,17 +361,23 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  color: const Color(0xFF7C3AED).withValues(alpha: 0.14),
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.18),
                   border: Border.all(
-                    color: const Color(0xFF7C3AED).withValues(alpha: 0.45),
+                    color: const Color(0xFFB07EFF).withValues(alpha: 0.55),
                     width: 1.0,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF9D5BFF).withValues(alpha: 0.20),
+                      blurRadius: 8,
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(
-                      width: 11, height: 11,
+                      width: 13, height: 13,
                       child: CustomPaint(
                         painter: _GPRingPainter(),
                       ),
@@ -363,10 +386,16 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
                     Text(
                       '${widget.gpPoints} GP',
                       style: const TextStyle(
-                        color: Color(0xFF9D5BFF),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFD9B4FF),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
                         letterSpacing: 0.8,
+                        shadows: [
+                          Shadow(
+                            color: Color(0xFF9D5BFF),
+                            blurRadius: 6,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -414,36 +443,107 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
             ),
           ),
 
-        // ── 콤보 ─────────────────────────────────────────────────
+        // ── 콤보 카운터 (상단 우측 고정) ─────────────────────────
         if (widget.combo > 1)
           Positioned(
-            top: top + 72, right: 20,
-            child: Text(
-              '${widget.combo} COMBO',
-              style: TextStyle(
-                color: const Color(0xFF7C3AED).withValues(alpha: 0.85),
-                fontSize: 11,
-                letterSpacing: 2,
-              ),
+            top: top + 70, right: 14,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'x${widget.combo}',
+                  style: TextStyle(
+                    color: _stageColor(widget.combo),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                    shadows: [
+                      Shadow(
+                        color: _stageColor(widget.combo).withValues(alpha: 0.70),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'COMBO',
+                  style: TextStyle(
+                    color: _stageColor(widget.combo).withValues(alpha: 0.65),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 3,
+                  ),
+                ),
+              ],
             ),
           ),
 
-        // ── 2-1) Near Miss 팝업 텍스트 (흔들림 + 등장/퇴장) ─────
+        // ── 콤보 팝 애니메이션 (중앙) ────────────────────────────
+        if (widget.combo > 1)
+          AnimatedBuilder(
+            animation: _comboPulseCtrl,
+            builder: (_, __) {
+              final t = _comboPulseCtrl.value;
+              if (t <= 0 || t >= 1) return const SizedBox.shrink();
+              // scale: 0.6 → 1.4 → 1.0
+              final double scale;
+              if (t < 0.35) {
+                scale = 0.6 + 0.8 * Curves.elasticOut.transform(t / 0.35);
+              } else if (t < 0.60) {
+                scale = 1.4;
+              } else {
+                scale = 1.4 - 0.4 * Curves.easeIn.transform((t - 0.60) / 0.40);
+              }
+              final opacity = t > 0.70
+                  ? ((1.0 - t) / 0.30).clamp(0.0, 1.0)
+                  : 1.0;
+              final combo = widget.combo;
+              final c     = _stageColor(combo);
+              return Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: Opacity(
+                      opacity: opacity,
+                      child: Transform.scale(
+                        scale: scale.clamp(0.0, 2.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'COMBO x$combo',
+                              style: TextStyle(
+                                color: c,
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 3,
+                                shadows: _stageShadows(combo),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+        // ── 2-1) Near Miss 팝업 텍스트 (10-stage 콤보 시스템) ──────
         if (widget.nearMissGrade != null)
           AnimatedBuilder(
             animation: _particleCtrl,
             builder: (_, __) {
-              final t     = _particleCtrl.value;
-              // 입장: 0~25% 구간에서 0.3→1.0 탄성 스케일
+              final t      = _particleCtrl.value;
               final scaleT = (t / 0.25).clamp(0.0, 1.0);
               final scale  = 0.3 + 0.7 * Curves.elasticOut.transform(scaleT);
-              // 흔들림: 감쇠 사인파
               final shake  = sin(t * pi * 10) * 9.0 * (1.0 - t);
-              // 투명도: 65% 지점까지 불투명, 이후 서서히 퇴장
               final opacity = t < 0.65
                   ? 1.0
                   : ((1.0 - t) / 0.35).clamp(0.0, 1.0);
               final grade  = widget.nearMissGrade!;
+              final combo  = widget.nearMissCombo.clamp(1, 10);
               return Positioned(
                 top: top + 112, left: 0, right: 0,
                 child: Center(
@@ -456,28 +556,30 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Stage-based main label
                             Text(
-                              _nearMissLabel(grade),
+                              _stageLabel(combo),
                               style: TextStyle(
-                                color: _nearMissColor(grade),
-                                fontSize: _nearMissFontSize(grade),
+                                color: _stageColor(combo),
+                                fontSize: _stageFontSize(combo),
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 4,
-                                shadows: _nearMissShadows(grade),
+                                shadows: _stageShadows(combo),
                               ),
                             ),
                             const SizedBox(height: 4),
+                            // Grade-based bonus score
                             Text(
                               _nearMissBonus(grade),
                               style: TextStyle(
-                                color: _nearMissColor(grade).withValues(alpha: 0.85),
-                                fontSize: _nearMissFontSize(grade) * 0.52,
+                                color: _stageColor(combo).withValues(alpha: 0.85),
+                                fontSize: _stageFontSize(combo) * 0.50,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 3,
                                 shadows: [
                                   Shadow(
                                     blurRadius: 10,
-                                    color: _nearMissColor(grade).withValues(alpha: 0.70),
+                                    color: _stageColor(combo).withValues(alpha: 0.70),
                                   ),
                                 ],
                               ),
@@ -485,6 +587,36 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+        // ── Stage 4+ 가장자리 글로우 (DANGER PLAY+) ──────────────
+        if (widget.nearMissGrade != null && widget.nearMissCombo >= 4)
+          AnimatedBuilder(
+            animation: _particleCtrl,
+            builder: (_, __) {
+              final t     = _particleCtrl.value;
+              final alpha = t < 0.5 ? t / 0.5 : (1.0 - t) / 0.5;
+              final c     = _stageColor(widget.nearMissCombo.clamp(4, 10));
+              return Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: c.withValues(alpha: alpha * 0.55),
+                        width: 2.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: c.withValues(alpha: alpha * 0.20),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -506,7 +638,7 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
               return Positioned.fill(
                 child: IgnorePointer(
                   child: Container(
-                    color: _nearMissColor(widget.nearMissGrade!)
+                    color: _stageColor(widget.nearMissCombo.clamp(1, 10))
                         .withValues(alpha: opacity * 0.14),
                   ),
                 ),

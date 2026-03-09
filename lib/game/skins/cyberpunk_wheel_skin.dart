@@ -44,7 +44,7 @@ class CyberpunkWheelSkin extends WheelSkin {
   @override
   void update(double dt) {
     super.update(dt);
-    final rotSpeed = (currentSpeed / 35.0).clamp(5.0, 15.0);
+    final rotSpeed = (currentSpeed / 15.0).clamp(5.0, 15.0);
     _rotation += dt * rotSpeed;
     _binaryScroll += dt * 2.5;
     if (_flipTimer > 0) _flipTimer -= dt;

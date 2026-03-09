@@ -19,7 +19,7 @@ class GlitchFrameSkin extends WheelSkin {
   @override
   void update(double dt) {
     super.update(dt);
-    _rotation += dt * (currentSpeed / 35.0).clamp(5.0, 15.0);
+    _rotation += dt * (currentSpeed / 15.0).clamp(5.0, 15.0);
     _glitchTimer += dt;
     
     if (_burstTimer > 0) {

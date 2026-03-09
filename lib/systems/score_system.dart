@@ -10,6 +10,8 @@ class ScoreSystem {
   bool _newBest = false;
 
   int get score => (_distance * _multiplier).toInt();
+  /// Multiplier-independent distance score — used for speed/difficulty only.
+  int get difficultyScore => _distance.toInt();
   int get bestScore => _bestScore;
   double get multiplier => _multiplier;
   int get combo => _combo;
