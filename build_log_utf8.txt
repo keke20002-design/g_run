@@ -1,0 +1,107 @@
+﻿Running Gradle task 'assembleRelease'...                        
+flutter : e: file:///C:
+/Users/admin/G_run/grav
+ity_flip_runner/android
+/app/build.gradle.kts:3
+3:35: Unresolved refere
+nce: util
+위치 줄:1 문자:1
++ flutter build apk --r
+elease > build_log.txt 
+2>&1
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (e: file:///C:   
+ /U...reference: ut    
+il:String) [], Rem    o
+teException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+e: file:///C:/Users/adm
+in/G_run/gravity_flip_r
+unner/android/app/build
+.gradle.kts:36:38: Unre
+solved reference: io
+e: file:///C:/Users/adm
+in/G_run/gravity_flip_r
+unner/android/app/build
+.gradle.kts:43:81: Unre
+solved reference: it
+
+FAILURE: Build failed w
+ith an exception.
+
+* Where:
+Build file 'C:\Users\ad
+min\G_run\gravity_flip_
+runner\android\app\buil
+d.gradle.kts' line: 19
+
+* What went wrong:
+Script compilation erro
+rs:
+
+  Line 19:         jvmT
+arget = JavaVersion.VER
+SION_17.toString()
+                   ^ 'j
+vmTarget: String' is de
+precated. Please migrat
+e to the compilerOption
+s DSL. More details are
+ here: https://kotl.in/
+u1r8ln
+
+  Line 33:     val keys
+toreProperties = java.u
+til.Properties()
+                       
+                      ^
+ Unresolved reference: 
+util
+
+  Line 36:         keys
+toreProperties.load(jav
+a.io.FileInputStream(ke
+ystorePropertiesFile))
+                       
+                       
+  ^ Unresolved referenc
+e: io
+
+  Line 43:             
+storeFile = keystorePro
+perties.getProperty("st
+oreFile")?.let { file(i
+t) }
+                       
+                       
+                       
+                     ^ 
+Unresolved reference: i
+t
+
+4 errors
+
+* Try:
+> Run with --stacktrace
+ option to get the stac
+k trace.
+> Run with --info or --
+debug option to get mor
+e log output.
+> Run with --scan to ge
+t full insights.
+> Get more help at http
+s://help.gradle.org.
+
+BUILD FAILED in 4s
+Running Gradle task 'assembleRelease'...                            5.0s
+Gradle task assembleRel
+ease failed with exit c
+ode 1

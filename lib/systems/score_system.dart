@@ -29,7 +29,7 @@ class ScoreSystem {
     final baseGP     = (score ~/ 100).clamp(1, 9999);
     final comboBonus = _maxCombo * 2;
     final diffBonus  = (baseGP * difficultyMultiplier).toInt();
-    return (baseGP + comboBonus + diffBonus).clamp(1, 500);
+    return baseGP + comboBonus + diffBonus; // .clamp(1, 500);
   }
 
   Future<void> saveBest(double difficultyMultiplier) async {

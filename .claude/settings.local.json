@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(grep -E \"\\\\.dart$\")",
+      "Bash(flutter build:*)",
+      "Bash(flutter pub:*)",
+      "Bash(dart run:*)"
     ]
   }
 }

@@ -1,20 +1,31 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'game/gravity_flip_game.dart';
 import 'game/player.dart' show NearMissGrade;
+import 'game/item.dart' show ItemType, ItemTypeInfo;
 import 'ui/game_over_screen.dart';
 import 'ui/hud.dart';
 import 'ui/skin_shop_screen.dart';
 import 'ui/skin_preview_painter.dart';
+import 'ui/ad_banner.dart';
+import 'ui/ad_manager.dart';
 import 'systems/skin_manager.dart';
 import 'systems/audio_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SkinManager.instance.load();
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    await MobileAds.instance.initialize();
+    AdManager.instance.loadRewardedAd();
+    AdManager.instance.loadInterstitialAd();
+  }
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const GravityFlipApp());
@@ -43,6 +54,7 @@ class _GamePageState extends State<GamePage> {
   late GravityFlipGame _game;
   bool _isDead      = false;
   bool _isStarted   = false;
+  bool _reviveUsed  = false;
   NearMissGrade? _nearMissGrade;
   bool _isPaused    = false;
   int  _gpBefore    = 0;
@@ -52,6 +64,10 @@ class _GamePageState extends State<GamePage> {
   double _multiplier = 1.0;
   int    _combo      = 0;
   int    _nearMissCombo = 1;
+
+  // Item pickup popup
+  ItemType? _activePickup;
+  int       _pickupSeq = 0;
 
   // Tutorial
   TutorialStep _tutorialStep    = TutorialStep.tap;
@@ -64,6 +80,7 @@ class _GamePageState extends State<GamePage> {
     _game.onDeath            = _onDeath;
     _game.onNearMissCallback = _onNearMiss;
     _game.onTutorialStep     = _onTutorialStep;
+    _game.onItemCollected    = _onItemCollected;
   }
 
   void _onDeath() {
@@ -90,6 +107,20 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
+  void _onItemCollected(ItemType type) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _activePickup = type;
+        _pickupSeq++;
+      });
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) setState(() => _activePickup = null);
+      });
+    });
+  }
+
   void _onTutorialStep(TutorialStep step) {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -107,6 +138,18 @@ class _GamePageState extends State<GamePage> {
         });
       }
     });
+  }
+
+  void _revive() {
+    _game.revivePlayer();
+    setState(() {
+      _isDead     = false;
+      _reviveUsed = true;
+    });
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
   }
 
   void _exitToMain() {
@@ -139,12 +182,14 @@ class _GamePageState extends State<GamePage> {
     setState(() {
       _isDead          = false;
       _isStarted       = true;
+      _reviveUsed      = false;
       _score           = 0;
       _multiplier      = 1.0;
       _combo           = 0;
       _gpEarned        = 0;
       _nearMissGrade   = null;
       _nearMissCombo   = 1;
+      _activePickup    = null;
       _tutorialStep    = TutorialStep.tap;
       _showGoHighScore = false;
     });
@@ -193,6 +238,10 @@ class _GamePageState extends State<GamePage> {
                       ),
                   onExit: _exitToMain,
                   onPause: _togglePause,
+                  slowFieldFraction:     _game.slowFieldFraction,
+                  ghostModeFraction:     _game.ghostModeFraction,
+                  secondChanceActive:    _game.itemSecondChanceActive,
+                  precisionCoreFraction: _game.precisionCoreFraction,
                 );
               },
             ),
@@ -205,6 +254,18 @@ class _GamePageState extends State<GamePage> {
               gpEarned: _gpEarned,
               onRestart: _start,
               onMenu: _exitToMain,
+              onRevive: _reviveUsed ? null : _revive,
+            ),
+
+          // ── Item pickup popup ─────────────────────────────────
+          if (_isStarted && !_isDead && _activePickup != null)
+            IgnorePointer(
+              child: Center(
+                child: _ItemPickupBanner(
+                  key: ValueKey(_pickupSeq),
+                  itemType: _activePickup!,
+                ),
+              ),
             ),
 
           // ── Tutorial: TAP TO FLIP hint ─────────────────────────
@@ -279,7 +340,7 @@ class _TapToFlipHintState extends State<_TapToFlipHint>
                   left: 0, right: 0,
                   child: Center(
                     child: Text(
-                      'TAP TO FLIP',
+                      'TAP TO FLIP GRAVITY',
                       style: TextStyle(
                         color: const Color(0xFF00E5FF).withValues(alpha: alpha),
                         fontSize: 20,
@@ -328,7 +389,7 @@ class _GoHighScoreOverlay extends StatelessWidget {
     return IgnorePointer(
       child: Center(
         child: Text(
-            'GO FOR HIGH SCORE',
+            'GO FOR HIGH SCORE!',
             style: const TextStyle(
               color: Color(0xFF00E5FF),
               fontSize: 18,
@@ -449,6 +510,8 @@ class _StartScreenState extends State<_StartScreen>
               const SizedBox(height: 16),
               _buildBestScore(),
               const Spacer(flex: 3),
+              const AdBannerWidget(),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -827,5 +890,52 @@ class _LogoRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LogoRingPainter old) =>
       old.angle != angle || old.glowAlpha != glowAlpha;
+}
+
+// ── Item Pickup Banner ────────────────────────────────────────────────────────
+
+class _ItemPickupBanner extends StatelessWidget {
+  final ItemType itemType;
+
+  const _ItemPickupBanner({super.key, required this.itemType});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = itemType.color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: c.withValues(alpha: 0.10),
+        border: Border.all(color: c.withValues(alpha: 0.60), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: c.withValues(alpha: 0.35),
+            blurRadius: 24,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Text(
+        itemType.label,
+        style: TextStyle(
+          color: c,
+          fontSize: 22,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 5,
+          shadows: [
+            Shadow(color: c.withValues(alpha: 0.80), blurRadius: 20),
+            Shadow(color: c.withValues(alpha: 0.40), blurRadius: 40),
+          ],
+        ),
+      ),
+    )
+        .animate()
+        .scaleXY(begin: 0.70, end: 1.15, duration: 180.ms, curve: Curves.easeOut)
+        .then()
+        .scaleXY(begin: 1.15, end: 1.0, duration: 100.ms)
+        .then(delay: 380.ms)
+        .fadeOut(duration: 260.ms);
+  }
 }
 

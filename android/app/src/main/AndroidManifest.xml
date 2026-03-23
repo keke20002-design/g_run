@@ -3,6 +3,10 @@
         android:label="gravity_flip_runner"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- AdMob App ID -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-5381891295736795~4025699122"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

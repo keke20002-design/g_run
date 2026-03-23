@@ -11,6 +11,7 @@ import 'breakable_block.dart';
 import 'breakable_pillar.dart';
 import 'electric_sphere.dart';
 import 'laser_cannon.dart';
+import 'gravity_bomb.dart';
 
 // ── Queued delayed spawn ───────────────────────────────────────────────────────
 
@@ -86,7 +87,8 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
   final List<_Queued> _queue = [];
   final Random _rng = Random();
 
-  bool _firstObstacleSpawned = false;
+  bool _firstObstacleSpawned       = false;
+  bool _firstBreakableBlockSpawned = false;
 
   double get _spawnInterval {
     final dm = game.difficultyManager;
@@ -162,6 +164,7 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     if (score >= 8000  && _rng.nextDouble() < 0.07) { _spawnLaserCannon();    return; }
     if (score >= 7000  && _rng.nextDouble() < 0.08) { _spawnPopWall();        return; }
     if (score >= 4000  && _rng.nextDouble() < 0.10) { _spawnRotating();       return; }
+    if (score >= 3000  && _rng.nextDouble() < 0.12) { _spawnGravityBomb();    return; }
 
     // ── Determine if we spawn a pattern or a single ──────────────────────────
     final patternChance = (phase == DifficultyPhase.hard) ? 0.6 : 0.3;
@@ -366,10 +369,12 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
   }
 
   void _spawnBreakableBlock() {
-    final screenH = game.size.y;
-    final screenW = game.size.x;
-    final y       = screenH * (0.25 + _rng.nextDouble() * 0.50);
-    game.add(BreakableBlock(pos: Vector2(screenW, y)));
+    final screenH   = game.size.y;
+    final screenW   = game.size.x;
+    final y         = screenH * (0.25 + _rng.nextDouble() * 0.50);
+    final isFirst   = !_firstBreakableBlockSpawned;
+    _firstBreakableBlockSpawned = true;
+    game.add(BreakableBlock(pos: Vector2(screenW, y), showWarning: isFirst));
   }
 
   void _spawnBreakablePillar() {
@@ -398,6 +403,23 @@ class ObstacleSpawner extends Component with HasGameReference<GravityFlipGame> {
     final isTop   = _rng.nextBool();
     final y       = isTop ? 0.0 : screenH - 20.0; // 20 = cannon height
     game.add(LaserCannon(pos: Vector2(screenW, y), isTop: isTop));
+  }
+
+  void _spawnGravityBomb() {
+    final screenW  = game.size.x;
+    final screenH  = game.size.y;
+    // 우측 상단에서 등장, 낙하 속도는 화면을 대각선으로 가로지를 정도
+    final spawnX   = screenW + GravityBomb.radius;
+    final fallSpeed = 180.0 + _rng.nextDouble() * 120.0; // 180–300 px/s
+    // 낙하 속도에 따라 스폰 Y 조정 → 화면 중앙~하단을 지나도록
+    // (화면 가로 도달 시간 × 낙하속도 = screenH×0.55 근방)
+    final crossTime = screenW / game.difficultyManager.speed;
+    final targetHitY = screenH * (0.45 + _rng.nextDouble() * 0.30);
+    final spawnY     = targetHitY - fallSpeed * crossTime * 0.5;
+    game.add(GravityBomb(
+      pos:       Vector2(spawnX, spawnY),
+      fallSpeed: fallSpeed,
+    ));
   }
 
   // ── Core spawn helper ─────────────────────────────────────────────────────

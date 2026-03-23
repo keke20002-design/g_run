@@ -3,8 +3,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../systems/skin_manager.dart';
-import 'ad_banner.dart';
-import 'ad_manager.dart';
 import 'skin_preview_painter.dart';
 
 // ── Skin Shop Screen ──────────────────────────────────────────────────────────
@@ -26,7 +24,6 @@ class _SkinShopScreenState extends State<SkinShopScreen>
   late final AnimationController _gpCountCtrl;    // GP count-up   (0.8 s)
 
   String _selectedSkinId = SkinManager.instance.equippedSkinId;
-  bool   _watchAdLoading  = false;
 
   late int _targetGP;
   int _displayGP = 0;
@@ -123,31 +120,6 @@ class _SkinShopScreenState extends State<SkinShopScreen>
     _gpScaleCtrl.forward(from: 0);
   }
 
-  Future<void> _onWatchAdForSkin(CharacterSkin skin) async {
-    if (_watchAdLoading) return;
-    setState(() => _watchAdLoading = true);
-    final ok = await AdManager.instance.showRewardedAd();
-    if (!mounted) return;
-    setState(() => _watchAdLoading = false);
-    if (ok) {
-      await SkinManager.instance.unlockSkinFree(skin.id);
-      if (!mounted) return;
-      await _showBurstDialog(skin);
-      if (!mounted) return;
-      setState(() {
-        _targetGP  = SkinManager.instance.gravityPoints;
-        _displayGP = _targetGP;
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ad not available. Please try again later.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
   Future<void> _onEquip(CharacterSkin skin) async {
     await SkinManager.instance.equipSkin(skin.id);
     setState(() {});
@@ -193,8 +165,6 @@ class _SkinShopScreenState extends State<SkinShopScreen>
                 _buildPreviewPanel(),
                 const SizedBox(height: 14),
                 Expanded(child: _buildSkinGrid()),
-                const SizedBox(height: 8),
-                const AdBannerWidget(),
                 const SizedBox(height: 8),
               ],
             ),
@@ -400,41 +370,6 @@ class _SkinShopScreenState extends State<SkinShopScreen>
     } else if (isOwned) {
       return _ActionChip(label: 'EQUIP', color: skin.themeColor,
           filled: false, onTap: () => _onEquip(skin));
-    } else if (skin.id == 'cyberpunk_wheel') {
-      // 광고 시청으로 무료 획득
-      return Row(
-        children: [
-          Expanded(
-            child: _ActionChip(label: 'TRY', color: skin.themeColor,
-                filled: false, onTap: () => _showTryDialog(skin)),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _watchAdLoading
-                ? Container(
-                    height: 22,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: skin.themeColor, width: 1.0),
-                    ),
-                    child: Center(
-                      child: SizedBox(
-                        width: 14, height: 14,
-                        child: CircularProgressIndicator(
-                          color: skin.themeColor, strokeWidth: 2,
-                        ),
-                      ),
-                    ),
-                  )
-                : _ActionChip(
-                    label: '📺 AD',
-                    color: const Color(0xFF00FF41),
-                    filled: true,
-                    onTap: () => _onWatchAdForSkin(skin),
-                  ),
-          ),
-        ],
-      );
     } else if (canAfford) {
       // Show TRY + BUY row
       return Row(
@@ -477,10 +412,10 @@ class _SkinShopScreenState extends State<SkinShopScreen>
         return GridView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 0.72,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
+            crossAxisCount: 2,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
           ),
           itemCount: skins.length,
           itemBuilder: (_, i) {
@@ -498,12 +433,9 @@ class _SkinShopScreenState extends State<SkinShopScreen>
               isDailyDeal: isDeal,
               dealTimeLeft: isDeal ? _dealTimeLeft : null,
               onTap: () => _selectSkin(skin),
-              onBuy:      () => _onBuy(skin),
-              onEquip:    () => _onEquip(skin),
-              onTry:      () => _showTryDialog(skin),
-              onWatchAd:  skin.id == 'cyberpunk_wheel' && !skin.isUnlocked
-                  ? () => _onWatchAdForSkin(skin)
-                  : null,
+              onBuy:   () => _onBuy(skin),
+              onEquip: () => _onEquip(skin),
+              onTry:   () => _showTryDialog(skin),
             ).animate()
               .fadeIn(delay: (i * 55).ms, duration: 220.ms)
               .slideY(begin: 0.12, end: 0,
@@ -566,7 +498,6 @@ class _SkinCard extends StatelessWidget {
   final VoidCallback? onBuy;
   final VoidCallback? onEquip;
   final VoidCallback? onTry;
-  final VoidCallback? onWatchAd;
 
   const _SkinCard({
     required this.skin,
@@ -581,7 +512,6 @@ class _SkinCard extends StatelessWidget {
     this.onBuy,
     this.onEquip,
     this.onTry,
-    this.onWatchAd,
   });
 
   @override
@@ -608,13 +538,13 @@ class _SkinCard extends StatelessWidget {
         ? skin.themeColor.withValues(alpha: 0.50)
         : (isSelected ? skin.themeColor : skin.themeColor.withValues(alpha: 0.65));
 
-    // Icon — enlarged for 2-col layout
+    // Icon — sized for 2-col card layout
     Widget iconWidget = SizedBox(
-      width: 42, height: 42,
+      width: 64, height: 64,
       child: CustomPaint(
         painter: SkinPreviewPainter(
           color: iconColor,
-          glowT: isSelected ? 0.85 : (locked ? 0.18 : 0.45),
+          glowT: isSelected ? 0.90 : (locked ? 0.18 : 0.55),
           skinId: skin.id,
           repaint: repaint,
         ),
@@ -631,13 +561,13 @@ class _SkinCard extends StatelessWidget {
               0.25, 0.60, 0.15, 0, 0,
               0.25, 0.60, 0.15, 0, 0,
               0.25, 0.60, 0.15, 0, 0,
-              0,    0,    0,    0.55, 0,
+              0,    0,    0,    0.45, 0,
             ]),
             child: iconWidget,
           ),
           // Hologram/scan line overlay
           SizedBox(
-            width: 42, height: 42,
+            width: 64, height: 64,
             child: AnimatedBuilder(
               animation: repaint,
               builder: (_, _) => CustomPaint(
@@ -664,11 +594,6 @@ class _SkinCard extends StatelessWidget {
       btnLabel  = 'EQUIP';
       btnFilled = false;
       btnAction = onEquip;
-    } else if (skin.id == 'cyberpunk_wheel') {
-      btnLabel  = '📺 AD';
-      btnFilled = true;
-      btnColor  = const Color(0xFF00FF41);
-      btnAction = onWatchAd;
     } else if (canAfford) {
       btnLabel  = 'BUY';
       btnFilled = true;
@@ -686,9 +611,6 @@ class _SkinCard extends StatelessWidget {
     } else if (owned) {
       statusText  = 'OWNED';
       statusColor = skin.themeColor.withValues(alpha: 0.65);
-    } else if (onWatchAd != null && locked) {
-      statusText  = 'FREE';
-      statusColor = const Color(0xFF00C853);
     } else {
       statusText  = '$price GP';
       statusColor = canAfford
@@ -722,9 +644,8 @@ class _SkinCard extends StatelessWidget {
                   ),
               ],
             ),
-            child: ClipRect(
-              child: Padding(
-              padding: EdgeInsets.fromLTRB(8, isDailyDeal ? 3 : 6, 8, isDailyDeal ? 3 : 6),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -733,9 +654,9 @@ class _SkinCard extends StatelessWidget {
                   if (isDailyDeal) ...[
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(7),
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFF6B00), Color(0xFFFF2D87)],
                         ),
@@ -747,7 +668,7 @@ class _SkinCard extends StatelessWidget {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 9,
+                              fontSize: 10,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 2,
                             ),
@@ -756,40 +677,15 @@ class _SkinCard extends StatelessWidget {
                             Text(
                               dealTimeLeft!,
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 8,
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontSize: 9,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 3),
-                  ],
-
-                  // 광고 시청 획득 배너
-                  if (onWatchAd != null && locked) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF00C853), Color(0xFF00E5FF)],
-                        ),
-                      ),
-                      child: const Text(
-                        '📺 AD',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 6),
                   ],
 
                   // Rarity label
@@ -797,28 +693,28 @@ class _SkinCard extends StatelessWidget {
                     skin.rarity.label,
                     style: TextStyle(
                       color: skin.rarity.color,
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 6),
 
-                  // Skin icon
+                  // Skin icon (64px for 2-col layout)
                   iconWidget,
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
 
-                  // Name
+                  // Name (locked = "?????")
                   Text(
-                    skin.name,
+                    locked ? '?????' : skin.name,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: locked
-                          ? Colors.white.withValues(alpha: 0.30)
-                          : Colors.white.withValues(alpha: 0.88),
-                      fontSize: 12,
+                          ? Colors.white.withValues(alpha: 0.28)
+                          : Colors.white.withValues(alpha: 0.92),
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.3,
                     ),
@@ -826,12 +722,12 @@ class _SkinCard extends StatelessWidget {
 
                   // "LOCKED" label for locked skins
                   if (locked) ...[
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
                       'LOCKED',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        fontSize: 9,
+                        color: Colors.white.withValues(alpha: 0.20),
+                        fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 3,
                       ),
@@ -840,17 +736,19 @@ class _SkinCard extends StatelessWidget {
 
                   // Effect name for unlocked
                   if (!locked) ...[
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
                       skin.effectName,
                       style: TextStyle(
-                        color: skin.themeColor.withValues(alpha: 0.5),
-                        fontSize: 9,
+                        color: skin.themeColor.withValues(alpha: 0.55),
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.3,
                       ),
                     ),
                   ],
+
+                  const Spacer(),
 
                   // Price row (with daily deal strikethrough)
                   if (isDailyDeal && locked) ...[
@@ -861,36 +759,36 @@ class _SkinCard extends StatelessWidget {
                           '${skin.price}',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.3),
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             decoration: TextDecoration.lineThrough,
                             decorationColor: Colors.white.withValues(alpha: 0.3),
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 5),
                         Text(
                           '$price GP',
                           style: const TextStyle(
                             color: Color(0xFFFF6B00),
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.5,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 5),
                   ] else ...[
                     Text(
                       statusText,
                       style: TextStyle(
                         color: statusColor,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 5),
                   ],
 
                   // Button (EQUIP / BUY / nothing)
@@ -898,21 +796,26 @@ class _SkinCard extends StatelessWidget {
                     GestureDetector(
                       onTap: btnAction,
                       child: Container(
-                        height: 22,
+                        height: 28,
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(11),
+                          borderRadius: BorderRadius.circular(14),
                           color: btnFilled
-                              ? btnColor.withValues(alpha: 0.18)
+                              ? btnColor.withValues(alpha: 0.20)
                               : Colors.transparent,
-                          border: Border.all(color: btnColor, width: 0.8),
+                          border: Border.all(color: btnColor, width: 1.0),
+                          boxShadow: btnFilled
+                              ? [BoxShadow(
+                                  color: btnColor.withValues(alpha: 0.18),
+                                  blurRadius: 8, spreadRadius: 0)]
+                              : null,
                         ),
                         child: Center(
                           child: Text(
                             btnLabel,
                             style: TextStyle(
                               color: btnColor,
-                              fontSize: 10.5,
+                              fontSize: 11,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 1.5,
                             ),
@@ -922,20 +825,19 @@ class _SkinCard extends StatelessWidget {
                     )
                   else
                     SizedBox(
-                      height: 14,
+                      height: 16,
                       child: Center(
                         child: Container(
                           height: 1,
-                          width: 24,
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.28),
+                          width: 28,
+                          color: const Color(0xFF00E5FF).withValues(alpha: 0.25),
                         ),
                       ),
                     ),
                 ],
               ),
             ),
-          ),
-        );
+          );
         },
       ),
     );
@@ -952,43 +854,55 @@ class _LockedOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Hologram color shift overlay
-    final hologramPaint = Paint()
-      ..color = color.withValues(alpha: 0.06)
-      ..blendMode = BlendMode.screen;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), hologramPaint);
+    // Hologram color tint
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()
+        ..color = color.withValues(alpha: 0.08)
+        ..blendMode = BlendMode.screen,
+    );
 
-    // Moving scan lines
+    // Moving scan lines (faster, denser for 64px icon)
     final scanPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
-      ..strokeWidth = 1.0;
-
-    final lineSpacing = 4.0;
-    final offset = (time * 30.0) % lineSpacing;
-    for (double y = -lineSpacing + offset; y < size.height; y += lineSpacing) {
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        scanPaint,
-      );
+      ..color = Colors.white.withValues(alpha: 0.07)
+      ..strokeWidth = 0.8;
+    const lineSpacing = 3.5;
+    final lineOffset = (time * 40.0) % lineSpacing;
+    for (double y = -lineSpacing + lineOffset; y < size.height; y += lineSpacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), scanPaint);
     }
 
-    // Brighter scan band that moves down
-    final bandY = (time * 25.0) % (size.height + 20) - 10;
-    final bandPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.transparent,
-          color.withValues(alpha: 0.12),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromLTWH(0, bandY - 8, size.width, 16));
+    // Bright scan band sweeping down
+    final bandY = (time * 30.0) % (size.height + 24) - 12;
     canvas.drawRect(
-      Rect.fromLTWH(0, bandY - 8, size.width, 16),
-      bandPaint,
+      Rect.fromLTWH(0, bandY - 10, size.width, 20),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            color.withValues(alpha: 0.18),
+            Colors.transparent,
+          ],
+        ).createShader(Rect.fromLTWH(0, bandY - 10, size.width, 20)),
     );
+
+    // Glitch horizontal offset stripes (rare, random-looking)
+    final rng = Random(((time * 4).toInt()));
+    if (rng.nextDouble() < 0.35) {
+      final glitchY = rng.nextDouble() * size.height;
+      final glitchH = 3.0 + rng.nextDouble() * 5;
+      final glitchX = (rng.nextDouble() - 0.5) * 6;
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(0, glitchY, size.width, glitchH));
+      canvas.translate(glitchX, 0);
+      canvas.drawRect(
+        Rect.fromLTWH(0, glitchY, size.width, glitchH),
+        Paint()..color = color.withValues(alpha: 0.22),
+      );
+      canvas.restore();
+    }
   }
 
   @override

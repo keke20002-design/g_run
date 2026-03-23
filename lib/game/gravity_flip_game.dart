@@ -17,6 +17,9 @@ import 'breakable_pillar.dart';
 import 'electric_sphere.dart';
 import 'laser_cannon.dart';
 import 'player.dart';
+import 'item.dart';
+import 'item_spawner.dart';
+import 'gravity_bomb.dart';
 
 export 'gravity_flip_game.dart';
 
@@ -38,6 +41,7 @@ class GravityFlipGame extends FlameGame
   VoidCallback? onFlip;
   void Function(NearMissGrade)? onNearMissCallback;
   void Function(TutorialStep)? onTutorialStep;
+  void Function(ItemType)? onItemCollected;
 
   TutorialStep tutorialStep        = TutorialStep.tap;
   int          _tutorialNearMissCount = 0;
@@ -70,13 +74,43 @@ class GravityFlipGame extends FlameGame
   bool   _highEnergyTriggered = false;
   static const double _highEnergyDuration = 1.2;
 
-  // Slow motion on death
-  double _timescale = 1.0;
+  // Slow motion on death / items
+  double _timescale     = 1.0;
+  double _baseTimescale = 1.0;   // 0.7 during slow field, else 1.0
 
-  // Shield
+  // Shield (near-miss gauge)
   bool   shieldActive   = false;
   double _shieldHitTime = 0.0;
   static const double _shieldHitDuration = 0.45;
+
+  // ── Item effects ──────────────────────────────────────────────────────────
+  bool   slowFieldActive          = false;
+  double _slowFieldTimer          = 0.0;
+  static const double _slowFieldDuration = 2.5;
+
+  bool   ghostModeActive          = false;
+  double _ghostModeTimer          = 0.0;
+  static const double _ghostModeDuration = 3.0;
+
+  bool   itemSecondChanceActive   = false;
+  bool   secondChanceObtained     = false;
+  double _itemShieldHitTime       = 0.0;
+  static const double _itemShieldHitDuration = 0.45;
+
+  bool   precisionCoreActive      = false;
+  double _precisionCoreTimer      = 0.0;
+  static const double _precisionCoreDuration = 5.0;
+
+  double _itemPickupFlashTime     = 0.0;
+  static const double _itemPickupFlashDuration = 0.18;
+
+  // Expose remaining fractions (0.0–1.0) for HUD
+  double get slowFieldFraction =>
+      slowFieldActive ? (_slowFieldTimer / _slowFieldDuration).clamp(0.0, 1.0) : 0.0;
+  double get ghostModeFraction =>
+      ghostModeActive ? (_ghostModeTimer / _ghostModeDuration).clamp(0.0, 1.0) : 0.0;
+  double get precisionCoreFraction =>
+      precisionCoreActive ? (_precisionCoreTimer / _precisionCoreDuration).clamp(0.0, 1.0) : 0.0;
 
   /// 0.0~1.0 — read by BackgroundComponent and Player
   double get milestoneBoostIntensity =>
@@ -106,15 +140,33 @@ class GravityFlipGame extends FlameGame
     children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());
     children.whereType<ObstacleSpawner>().toList().forEach((s) => s.removeFromParent());
+    children.whereType<ItemComponent>().toList().forEach((i) => i.removeFromParent());
+    children.whereType<ItemSpawner>().toList().forEach((s) => s.removeFromParent());
+    children.whereType<GravityBomb>().toList().forEach((b) => b.removeFromParent());
 
     player  = Player()..position = Vector2(80, size.y - Player.playerSize);
     spawner = ObstacleSpawner();
 
     add(player);
     add(spawner);
-    _timescale           = 1.0;
-    shieldActive         = false;
-    _shieldHitTime       = 0.0;
+    add(ItemSpawner());
+
+    _timescale              = 1.0;
+    _baseTimescale          = 1.0;
+    shieldActive            = false;
+    _shieldHitTime          = 0.0;
+    // item state reset
+    slowFieldActive         = false;
+    _slowFieldTimer         = 0.0;
+    ghostModeActive         = false;
+    _ghostModeTimer         = 0.0;
+    itemSecondChanceActive  = false;
+    secondChanceObtained    = false;
+    _itemShieldHitTime      = 0.0;
+    precisionCoreActive     = false;
+    _precisionCoreTimer     = 0.0;
+    _itemPickupFlashTime    = 0.0;
+
     difficultyManager.reset();
     scoreSystem.reset();
     _totalTime              = 0;
@@ -159,10 +211,26 @@ class GravityFlipGame extends FlameGame
     difficultyManager.update(sdt, scoreSystem.difficultyScore);
     scoreSystem.update(sdt, difficultyManager.speed);
 
-    // BreakableBlock collision:
-    // 1) 이번 프레임 sweep (플레이어 이동 경로 전체)
-    // 2) 플레이어가 최근 0.45초 안에 블록 y구간을 지난 경우 (유예 플래그)
-    if (!player.isDead && prevY >= 0) {
+    // ── Item proximity check (manual — same approach as BreakableBlock) ──────
+    if (!player.isDead) {
+      const pickupRadius = Player.playerSize / 2 + ItemComponent.itemSize / 2;
+      final px = player.position.x + Player.playerSize / 2;
+      final py = player.position.y + Player.playerSize / 2;
+      for (final item in children.whereType<ItemComponent>().toList()) {
+        if (item.collected) continue;
+        final dx   = px - item.position.x;
+        final dy   = py - item.position.y;
+        final dist = sqrt(dx * dx + dy * dy);
+        if (dist < pickupRadius) {
+          item.collected = true;
+          collectItem(item.type);
+          item.removeFromParent();
+        }
+      }
+    }
+
+    // BreakableBlock collision (ghost mode: skip all)
+    if (!player.isDead && prevY >= 0 && !ghostModeActive) {
       const ps = Player.playerSize;
       final currY = player.position.y;
       final px    = player.position.x;
@@ -199,7 +267,27 @@ class GravityFlipGame extends FlameGame
     if (_milestoneBoostTime > 0) _milestoneBoostTime -= sdt;
     if (_highEnergyTimer    > 0) _highEnergyTimer    -= sdt;
     if (_shieldHitTime      > 0) _shieldHitTime      -= dt; // wall-clock
+    if (_itemPickupFlashTime > 0) _itemPickupFlashTime -= dt;
+    if (_itemShieldHitTime   > 0) _itemShieldHitTime  -= dt;
     _totalTime += sdt;
+
+    // ── Item effect timers ────────────────────────────────────────────────
+    if (slowFieldActive) {
+      _slowFieldTimer -= sdt;
+      if (_slowFieldTimer <= 0) {
+        slowFieldActive = false;
+        _baseTimescale  = 1.0;
+        if (_timescale < 0.9) _timescale = 1.0; // only restore if still slowed
+      }
+    }
+    if (ghostModeActive) {
+      _ghostModeTimer -= sdt;
+      if (_ghostModeTimer <= 0) ghostModeActive = false;
+    }
+    if (precisionCoreActive) {
+      _precisionCoreTimer -= sdt;
+      if (_precisionCoreTimer <= 0) precisionCoreActive = false;
+    }
 
     // Detect 1000-point milestones → CA flash + star boost + character rush
     final milestone = scoreSystem.score ~/ 1000;
@@ -261,10 +349,39 @@ class GravityFlipGame extends FlameGame
       }
       super.render(canvas);
       _drawComboRing(canvas);
+      _drawItemShieldRing(canvas);
       canvas.restore();
     } else {
       super.render(canvas);
       _drawComboRing(canvas);
+      _drawItemShieldRing(canvas);
+    }
+
+    // ── Slow Field: blue tint overlay ────────────────────────────────────────
+    if (slowFieldActive && state == GameState.playing) {
+      final a = 0.07 + 0.04 * sin(_totalTime * 3.0);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.x, size.y),
+        Paint()..color = const Color(0xFF00E5FF).withValues(alpha: a),
+      );
+    }
+
+    // ── Item second-chance (CRACK) flash ─────────────────────────────────────
+    if (_itemShieldHitTime > 0) {
+      final p = (_itemShieldHitTime / _itemShieldHitDuration).clamp(0.0, 1.0);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.x, size.y),
+        Paint()..color = Colors.white.withValues(alpha: p * 0.42),
+      );
+    }
+
+    // ── Item pickup flash ────────────────────────────────────────────────────
+    if (_itemPickupFlashTime > 0) {
+      final p = (_itemPickupFlashTime / _itemPickupFlashDuration).clamp(0.0, 1.0);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.x, size.y),
+        Paint()..color = Colors.white.withValues(alpha: p * 0.22),
+      );
     }
 
     // Cyan flash overlay at screen space (no transform applied)
@@ -316,7 +433,8 @@ class GravityFlipGame extends FlameGame
   /// Called by rotating obstacle / other non-Obstacle components.
   void killPlayer() {
     if (state != GameState.playing || player.isDead) return;
-    if (shieldActive) { absorbShieldHit(); return; }
+    if (shieldActive)           { absorbShieldHit(); return; }
+    if (itemSecondChanceActive) { absorbItemShield(); return; }
     player.isDead = true;
     player.triggerDeathEffects();
     onPlayerDeath();
@@ -326,7 +444,70 @@ class GravityFlipGame extends FlameGame
     shieldActive   = false;
     _shieldHitTime = _shieldHitDuration;
     difficultyManager.nearMissGaugeCount = 0;
-    _shakeTime = _shakeDuration * 0.5; // 약한 진동 피드백
+    _shakeTime = _shakeDuration * 0.5;
+  }
+
+  // ── Item: Second Chance absorption ───────────────────────────────────────
+  void absorbItemShield() {
+    itemSecondChanceActive = false;
+    _itemShieldHitTime     = _itemShieldHitDuration;
+    _shakeTime             = _shakeDuration * 0.5;
+    // Brief slow-mo (CRACK effect)
+    _timescale = 0.20;
+    Future.delayed(const Duration(milliseconds: 140), () {
+      if (state == GameState.playing) _timescale = _baseTimescale;
+    });
+  }
+
+  // ── Item: Collect ─────────────────────────────────────────────────────────
+  void collectItem(ItemType type) {
+    _itemPickupFlashTime = _itemPickupFlashDuration;
+    player.triggerItemPickup(type.color);
+    switch (type) {
+      case ItemType.slowField:
+        slowFieldActive = true;
+        _slowFieldTimer = _slowFieldDuration;
+        _baseTimescale  = 0.7;
+        _timescale      = 0.7;
+      case ItemType.ghostMode:
+        ghostModeActive = true;
+        _ghostModeTimer = _ghostModeDuration;
+      case ItemType.secondChance:
+        itemSecondChanceActive = true;
+        secondChanceObtained   = true;
+      case ItemType.precisionCore:
+        precisionCoreActive = true;
+        _precisionCoreTimer = _precisionCoreDuration;
+    }
+    onItemCollected?.call(type);
+  }
+
+  /// 광고 시청 후 부활: 장애물을 모두 제거하고 플레이어를 살립니다 (점수 유지).
+  void revivePlayer() {
+    if (state != GameState.dead) return;
+    children.whereType<Obstacle>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<RotatingObstacle>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<GravZone>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<EnergyBarrier>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakableBlock>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<BreakablePillar>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<ElectricSphere>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<GravityBomb>().toList().forEach((o) => o.removeFromParent());
+    children.whereType<ItemComponent>().toList().forEach((i) => i.removeFromParent());
+    player.revive(size.y);
+    _timescale             = 1.0;
+    _baseTimescale         = 1.0;
+    _shakeTime             = 0;
+    _shieldHitTime         = 0;
+    slowFieldActive        = false;
+    _slowFieldTimer        = 0;
+    ghostModeActive        = false;
+    _ghostModeTimer        = 0;
+    itemSecondChanceActive = false;
+    precisionCoreActive    = false;
+    _precisionCoreTimer    = 0;
+    state = GameState.playing;
   }
 
   /// Called by GravZone — flip without killing.
@@ -399,7 +580,7 @@ class GravityFlipGame extends FlameGame
   Future<void> _triggerBriefSlowMo() async {
     _timescale = 0.25;
     await Future.delayed(const Duration(milliseconds: 100));
-    if (state == GameState.playing) _timescale = 1.0;
+    if (state == GameState.playing) _timescale = _baseTimescale;
   }
 
   void _drawComboRing(Canvas canvas) {
@@ -513,6 +694,81 @@ class GravityFlipGame extends FlameGame
     _caTime = _caDuration;
   }
 
+  // ── Item Second Chance: gold shield ring ──────────────────────────────────
+  void _drawItemShieldRing(Canvas canvas) {
+    if (!itemSecondChanceActive && _itemShieldHitTime <= 0) return;
+
+    final cx    = player.position.x + Player.playerSize / 2;
+    final cy    = player.position.y + Player.playerSize / 2;
+    const gold  = Color(0xFFFFD700);
+    const white = Colors.white;
+    const ringR = 34.0;
+    const sw    = 2.0;
+    final pulse = 0.55 + 0.45 * sin(_totalTime * 4.2);
+    final rot   = _totalTime * 0.9;
+
+    if (itemSecondChanceActive) {
+      // Outer glow
+      canvas.drawCircle(Offset(cx, cy), ringR + 4,
+          Paint()
+            ..color      = gold.withValues(alpha: 0.12 + pulse * 0.10)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10));
+
+      // Six rotating arc segments (hexagonal pattern)
+      const segments = 6;
+      const gap      = 0.18;
+      const segSweep = (2 * pi / segments) - gap;
+      for (int i = 0; i < segments; i++) {
+        final start = rot + i * (2 * pi / segments) + gap / 2;
+        final rect  = Rect.fromCircle(center: Offset(cx, cy), radius: ringR);
+        // Glow
+        canvas.drawArc(rect, start, segSweep, false,
+            Paint()
+              ..color       = gold.withValues(alpha: 0.25 + pulse * 0.25)
+              ..style       = PaintingStyle.stroke
+              ..strokeWidth = sw + pulse * 6
+              ..strokeCap   = StrokeCap.round
+              ..maskFilter  = MaskFilter.blur(BlurStyle.normal, 4 + pulse * 4));
+        // Core arc
+        canvas.drawArc(rect, start, segSweep, false,
+            Paint()
+              ..color       = Color.lerp(gold, white, pulse * 0.4)!
+              ..style       = PaintingStyle.stroke
+              ..strokeWidth = sw
+              ..strokeCap   = StrokeCap.round);
+      }
+
+      // Inner force-field circle
+      canvas.drawCircle(Offset(cx, cy), ringR - sw,
+          Paint()..color = gold.withValues(alpha: pulse * 0.06));
+
+    } else if (_itemShieldHitTime > 0) {
+      // CRACK: fragments fly outward
+      final t = 1.0 - (_itemShieldHitTime / _itemShieldHitDuration);
+      final rng = Random(42);
+      for (int i = 0; i < 12; i++) {
+        final a     = i * (2 * pi / 12) + rng.nextDouble() * 0.4;
+        final delay = rng.nextDouble() * 0.15;
+        final lt    = ((t - delay) / (1.0 - delay)).clamp(0.0, 1.0);
+        if (lt <= 0) continue;
+        final dist  = ringR + lt * (30.0 + rng.nextDouble() * 20);
+        final alpha = (1.0 - lt) * 0.90;
+        final len   = 5.0 * (1.0 - lt * 0.7);
+        final fx    = cx + cos(a) * dist;
+        final fy    = cy + sin(a) * dist;
+        canvas.drawLine(
+          Offset(fx - cos(a) * len, fy - sin(a) * len),
+          Offset(fx + cos(a) * len, fy + sin(a) * len),
+          Paint()
+            ..color       = Color.lerp(gold, white, lt)!.withValues(alpha: alpha)
+            ..strokeWidth = 2.0 * (1.0 - lt * 0.6)
+            ..strokeCap   = StrokeCap.round
+            ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 2),
+        );
+      }
+    }
+  }
+
   void returnToMenu() {
     children.whereType<Obstacle>().toList().forEach((o) => o.removeFromParent());
     children.whereType<RotatingObstacle>().toList().forEach((o) => o.removeFromParent());
@@ -524,10 +780,18 @@ class GravityFlipGame extends FlameGame
     children.whereType<LaserCannon>().toList().forEach((o) => o.removeFromParent());
     children.whereType<Player>().toList().forEach((p) => p.removeFromParent());
     children.whereType<ObstacleSpawner>().toList().forEach((s) => s.removeFromParent());
-    _highEnergyTimer = 0;
-    _caTime          = 0;
-    _shakeTime       = 0;
-    _timescale       = 1.0;
+    children.whereType<ItemComponent>().toList().forEach((i) => i.removeFromParent());
+    children.whereType<ItemSpawner>().toList().forEach((s) => s.removeFromParent());
+    children.whereType<GravityBomb>().toList().forEach((b) => b.removeFromParent());
+    _highEnergyTimer       = 0;
+    _caTime                = 0;
+    _shakeTime             = 0;
+    _timescale             = 1.0;
+    _baseTimescale         = 1.0;
+    slowFieldActive        = false;
+    ghostModeActive        = false;
+    itemSecondChanceActive = false;
+    precisionCoreActive    = false;
     state = GameState.menu;
   }
 }

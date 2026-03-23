@@ -14,6 +14,11 @@ class HUD extends StatefulWidget {
   final int gpPoints;
   final VoidCallback? onExit;
   final VoidCallback? onPause;
+  // Item state (0.0 = inactive, >0 = fraction of remaining time)
+  final double slowFieldFraction;
+  final double ghostModeFraction;
+  final bool   secondChanceActive;
+  final double precisionCoreFraction;
 
   const HUD({
     super.key,
@@ -27,6 +32,10 @@ class HUD extends StatefulWidget {
     this.isPaused = false,
     this.onExit,
     this.onPause,
+    this.slowFieldFraction      = 0.0,
+    this.ghostModeFraction      = 0.0,
+    this.secondChanceActive     = false,
+    this.precisionCoreFraction  = 0.0,
   });
 
   @override
@@ -144,7 +153,7 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
     'UNTOUCHABLE',     // 7
     'COSMIC FLOW',     // 8
     'GODLIKE',         // 9
-    'LEGENDARY COMBO', // 10+
+    'LEGENDARY',       // 10+
   ];
 
   String _stageLabel(int combo) {
@@ -350,10 +359,13 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
           ),
         ),
 
-        // ── GP + 일시정지 (오른쪽 상단) ──────────────────────────
+        // ── GP + 일시정지 + 아이템 배지 (오른쪽 상단) ─────────────
         Positioned(
           top: top - 8, right: 10,
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // GP 뱃지
@@ -422,6 +434,17 @@ class _HUDState extends State<HUD> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+            ],
+          ),
+              // ── 아이템 활성 배지 ────────────────────────────────
+              if (widget.slowFieldFraction > 0)
+                _ItemBadge(icon: '⚡', color: 0xFF00E5FF, progress: widget.slowFieldFraction),
+              if (widget.ghostModeFraction > 0)
+                _ItemBadge(icon: '👻', color: 0xFF9B30FF, progress: widget.ghostModeFraction),
+              if (widget.secondChanceActive)
+                const _ItemBadge(icon: '🛡', color: 0xFFFFD700, progress: 1.0, isShield: true),
+              if (widget.precisionCoreFraction > 0)
+                _ItemBadge(icon: '🎯', color: 0xFFFF2D87, progress: widget.precisionCoreFraction),
             ],
           ),
         ),
@@ -869,4 +892,70 @@ class _GPRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GPRingPainter old) => false;
+}
+
+// ── 아이템 활성 배지 ──────────────────────────────────────────────────────────
+
+class _ItemBadge extends StatelessWidget {
+  final String icon;
+  final int    color;
+  final double progress;  // 0.0–1.0 remaining fraction
+  final bool   isShield;
+
+  const _ItemBadge({
+    required this.icon,
+    required this.color,
+    required this.progress,
+    this.isShield = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Color(color);
+    return Container(
+      margin: const EdgeInsets.only(top: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: c.withValues(alpha: 0.12),
+        border: Border.all(color: c.withValues(alpha: 0.50), width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: c.withValues(alpha: 0.20),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 11)),
+          const SizedBox(width: 4),
+          if (isShield)
+            Text(
+              'x1',
+              style: TextStyle(
+                color: c,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            )
+          else
+            SizedBox(
+              width: 34,
+              height: 4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: c.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation<Color>(c),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

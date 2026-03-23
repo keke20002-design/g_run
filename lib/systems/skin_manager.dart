@@ -82,7 +82,7 @@ class SkinManager {
       id: 'dual_core',
       name: 'Dual Core',
       themeColor: const Color(0xFF00E5FF),
-      price: 800,
+      price: 18000,
       rarity: SkinRarity.common,
       effectName: 'Twin Pulse Rings',
     ),
@@ -90,7 +90,7 @@ class SkinManager {
       id: 'solar_flare',
       name: 'Solar Flare',
       themeColor: const Color(0xFFFF8C00),
-      price: 500,
+      price: 12000,
       rarity: SkinRarity.common,
       effectName: 'Radiant Corona',
     ),
@@ -98,7 +98,7 @@ class SkinManager {
       id: 'pulse_core',
       name: 'Pulse Core',
       themeColor: const Color(0xFFFFEA00),
-      price: 2500,
+      price: 40000,
       rarity: SkinRarity.rare,
       effectName: 'Rhythmic Pulse',
     ),
@@ -106,7 +106,7 @@ class SkinManager {
       id: 'black_hole_core',
       name: 'Black Hole Core',
       themeColor: const Color(0xFF9B30FF),
-      price: 6000,
+      price: 60000,
       rarity: SkinRarity.rare,
       effectName: 'Accretion Spiral',
     ),
@@ -114,7 +114,7 @@ class SkinManager {
       id: 'phantom_ring',
       name: 'Phantom Ring',
       themeColor: const Color(0xFF00BFA5),
-      price: 4000,
+      price: 50000,
       rarity: SkinRarity.rare,
       effectName: 'Ghost Echoes',
     ),
@@ -122,7 +122,7 @@ class SkinManager {
       id: 'prism_glass',
       name: 'Prism Glass',
       themeColor: const Color(0xFFB8F0FF),
-      price: 8000,
+      price: 100000,
       rarity: SkinRarity.epic,
       effectName: 'Rainbow Refraction',
     ),
@@ -130,7 +130,7 @@ class SkinManager {
       id: 'electric_pulse',
       name: 'Electric Pulse',
       themeColor: const Color(0xFF00FFFF),
-      price: 10000,
+      price: 140000,
       rarity: SkinRarity.epic,
       effectName: 'Lightning Arcs',
     ),
@@ -138,7 +138,7 @@ class SkinManager {
       id: 'nova_burst',
       name: 'Nova Burst',
       themeColor: const Color(0xFFFF4081),
-      price: 9000,
+      price: 120000,
       rarity: SkinRarity.epic,
       effectName: 'Star Explosion',
     ),
@@ -146,7 +146,7 @@ class SkinManager {
       id: 'cyberpunk_wheel',
       name: 'Cyberpunk Wheel',
       themeColor: const Color(0xFF00FF41),
-      price: 12000,
+      price: 240000,
       rarity: SkinRarity.legendary,
       effectName: 'Binary Code Flow',
     ),
@@ -154,7 +154,7 @@ class SkinManager {
       id: 'guardian_shield',
       name: 'Guardian Shield',
       themeColor: const Color(0xFFFFD700),
-      price: 15000,
+      price: 320000,
       rarity: SkinRarity.legendary,
       effectName: 'Orbital Shields',
     ),
@@ -162,7 +162,7 @@ class SkinManager {
       id: 'void_walker',
       name: 'Void Walker',
       themeColor: const Color(0xFFE040FB),
-      price: 18000,
+      price: 400000,
       rarity: SkinRarity.legendary,
       effectName: 'Dimensional Rift',
     ),
@@ -325,7 +325,7 @@ class SkinManager {
       raw = (raw * 1.2).toInt();
     }
 
-    _gravityPoints += raw.clamp(1, 500);
+    _gravityPoints += raw; // .clamp(1, 500);
     await _save();
   }
 
@@ -346,6 +346,14 @@ class SkinManager {
 
     await _save();
     return true;
+  }
+
+  // ── Free unlock (광고 보상) ───────────────────────────────────────────────
+  Future<void> unlockSkinFree(String id) async {
+    final skin = skins.firstWhere((s) => s.id == id, orElse: () => skins[0]);
+    if (skin.isUnlocked) return;
+    skin.isUnlocked = true;
+    await _save();
   }
 
   // ── Equip ─────────────────────────────────────────────────────────────────

@@ -1,20 +1,23 @@
 import 'dart:math';
-import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'gravity_flip_game.dart';
+import 'player.dart';
 
 // ── 전기 구체 (9000pts+) ──────────────────────────────────────────────────────
-// 둥근 장애물. 주변 전기 스파크 + 파티클.
+// 둥근 장애물. 주변 전기 스파크 + 파티클. 상하로 이동.
 
 class ElectricSphere extends PositionComponent
-    with HasGameReference<GravityFlipGame>, CollisionCallbacks {
-  static const double _r   = 20.0;
-  static const Color  _col = Color(0xFFFFCC00);
+    with HasGameReference<GravityFlipGame> {
+  static const double _r        = 20.0;
+  static const double _bobAmp   = 38.0; // 상하 진폭 (px)
+  static const double _bobSpeed = 1.6;  // 상하 속도 (rad/s)
+  static const Color  _col = Color(0xFF00AAFF); // 파란 계열
   static const Color  _wht = Colors.white;
 
-  double _time    = 0;
+  double _time     = 0;
   double _spawnAge = 0;
+  double _startY   = 0;
   final Random _rng;
 
   ElectricSphere({required Vector2 pos})
@@ -23,11 +26,8 @@ class ElectricSphere extends PositionComponent
           position: pos,
           size:     Vector2.all(_r * 2),
           anchor:   Anchor.center,
-        );
-
-  @override
-  Future<void> onLoad() async {
-    add(CircleHitbox(radius: _r - 4));
+        ) {
+    _startY = pos.y;
   }
 
   @override
@@ -35,15 +35,25 @@ class ElectricSphere extends PositionComponent
     if (game.state != GameState.playing) { removeFromParent(); return; }
     if (_spawnAge < 0.15) _spawnAge += dt;
     _time += dt;
-    position.x -= game.difficultyManager.speed * dt;
-    if (position.x < -_r * 4) removeFromParent();
-  }
 
-  @override
-  void onCollisionStart(
-      Set<Vector2> intersectionPoints, PositionComponent other) {
-    super.onCollisionStart(intersectionPoints, other);
-    game.killPlayer();
+    // 좌측 이동
+    position.x -= game.difficultyManager.speed * dt;
+    // 상하 이동
+    position.y = _startY + sin(_time * _bobSpeed) * _bobAmp;
+
+    if (position.x < -_r * 4) { removeFromParent(); return; }
+
+    // 직접 거리 계산으로 플레이어 충돌 체크
+    if (!game.player.isDead && !game.ghostModeActive) {
+      final px   = game.player.position.x + Player.playerSize / 2;
+      final py   = game.player.position.y + Player.playerSize / 2;
+      final dx   = position.x - px;
+      final dy   = position.y - py;
+      final dist = sqrt(dx * dx + dy * dy);
+      if (dist < _r + Player.playerSize / 2 - 2) {
+        game.killPlayer();
+      }
+    }
   }
 
   @override
@@ -63,7 +73,7 @@ class ElectricSphere extends PositionComponent
     // 본체 (어두운 내부)
     canvas.drawCircle(
       Offset(cx, cy), _r,
-      Paint()..color = const Color(0xFF1A1200).withValues(alpha: fa),
+      Paint()..color = const Color(0xFF00101A).withValues(alpha: fa),
     );
     // 내부 glow fill
     canvas.drawCircle(

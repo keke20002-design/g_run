@@ -39,8 +39,9 @@ class BreakableBlock extends PositionComponent
 
   bool passed          = false;
   bool nearMissChecked = false;
+  final bool showWarning;
 
-  BreakableBlock({required Vector2 pos})
+  BreakableBlock({required Vector2 pos, this.showWarning = false})
       : super(position: pos, size: Vector2(_w, _h));
 
   bool get isBroken => _broken;
@@ -188,5 +189,39 @@ class BreakableBlock extends PositionComponent
       ..strokeCap   = StrokeCap.round;
     canvas.drawLine(Offset(cx - 5, cy - 5), Offset(cx + 5, cy + 5), ic);
     canvas.drawLine(Offset(cx + 5, cy - 5), Offset(cx - 5, cy + 5), ic);
+
+    if (showWarning) _drawWarningLabel(canvas, fa);
+  }
+
+  void _drawWarningLabel(Canvas canvas, double fa) {
+    const warnColor = Color(0xFFFFB300);
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '⚠ BREAKABLE',
+        style: TextStyle(
+          color: warnColor.withValues(alpha: fa),
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final labelX = (size.x - tp.width) / 2;
+    final labelY = -tp.height - 4.0;
+
+    // Glow
+    canvas.save();
+    canvas.translate(labelX, labelY);
+    canvas.drawRect(
+      Rect.fromLTWH(-2, -1, tp.width + 4, tp.height + 2),
+      Paint()
+        ..color      = warnColor.withValues(alpha: 0.18 * fa)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    canvas.restore();
+
+    tp.paint(canvas, Offset(labelX, labelY));
   }
 }

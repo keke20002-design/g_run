@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'ad_manager.dart';
 
 class GameOverScreen extends StatefulWidget {
   final int score;
@@ -9,6 +10,7 @@ class GameOverScreen extends StatefulWidget {
   final int gpEarned;
   final VoidCallback onRestart;
   final VoidCallback onMenu;
+  final VoidCallback? onRevive; // null이면 버튼 숨김
 
   const GameOverScreen({
     super.key,
@@ -18,6 +20,7 @@ class GameOverScreen extends StatefulWidget {
     required this.gpEarned,
     required this.onRestart,
     required this.onMenu,
+    this.onRevive,
   });
 
   @override
@@ -29,6 +32,8 @@ class _GameOverScreenState extends State<GameOverScreen>
   late AnimationController _glitchCtrl;
   late AnimationController _entryCtrl;
   late Animation<double> _fadeIn;
+
+  bool _reviveLoading = false;
 
   @override
   void initState() {
@@ -52,6 +57,24 @@ class _GameOverScreenState extends State<GameOverScreen>
     _glitchCtrl.dispose();
     _entryCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _onReviveTap() async {
+    if (_reviveLoading) return;
+    setState(() => _reviveLoading = true);
+    final ok = await AdManager.instance.showInterstitialAd();
+    if (!mounted) return;
+    if (ok) {
+      widget.onRevive?.call();
+    } else {
+      setState(() => _reviveLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ad not available. Please try again later.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -173,7 +196,7 @@ class _GameOverScreenState extends State<GameOverScreen>
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _StatRow(label: 'DISTANCE', value: '$distance m'),
+                          _StatRow(label: 'DIST', value: '$distance m'),
                           const SizedBox(height: 10),
                           _StatRow(
                             label: 'BEST',
@@ -196,23 +219,104 @@ class _GameOverScreenState extends State<GameOverScreen>
 
           // ── Buttons fixed at bottom ─────────────────────────────────
           Positioned(
-            bottom: 28,
+            bottom: 20,
             left: 0,
             right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                _NeonOutlineButton(
-                  text: 'RETRY',
-                  onTap: widget.onRestart,
+                // 광고 시청 후 부활 버튼 (1회 한정)
+                if (widget.onRevive != null) ...[
+                  _ReviveAdButton(
+                    isLoading: _reviveLoading,
+                    onTap: _onReviveTap,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                // 기존 버튼 행
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _NeonOutlineButton(
+                      text: 'RESTART',
+                      onTap: widget.onRestart,
+                    ),
+                    const SizedBox(width: 24),
+                    _MenuButton(onTap: widget.onMenu),
+                  ],
                 ),
-                const SizedBox(width: 24),
-                _MenuButton(onTap: widget.onMenu),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Revive Ad Button ─────────────────────────────────────────────────────────
+
+class _ReviveAdButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _ReviveAdButton({required this.isLoading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: Container(
+        width: 280,
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFD700), Color(0xFFFF8C00)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFD700).withValues(alpha: 0.40),
+              blurRadius: 16,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Center(
+          child: isLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2.5,
+                  ),
+                )
+              : const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('📺', style: TextStyle(fontSize: 18)),
+                    SizedBox(width: 8),
+                    Text(
+                      'REVIVE (WATCH AD)',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      )
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .scaleXY(
+            begin: 1.0,
+            end: 1.04,
+            duration: 1200.ms,
+            curve: Curves.easeInOut,
+          ),
     );
   }
 }
